@@ -54,7 +54,7 @@ export default async function handler(req, res) {
       .insert({ user_id: user.id });
     if (insertErr) console.error('insert usage error', insertErr);
 
-    // NEW: Pass image URL to agent if provided
+    // Pass both text and image to agent
     const replyText = await runAgent(userText, imageUrl);
     return res.status(200).json({ reply: replyText || 'Sorry, something went wrong.' });
   } catch (e) {
