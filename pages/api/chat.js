@@ -66,9 +66,23 @@ export default async function handler(req, res) {
 
     let replyText = '';
     
+    // CRITICAL: Detect if this is a fresh conversation start
+    // If user says just a greeting (hey, hi, hello), they're starting fresh - don't load old history
+    const isFreshStart = /^(hey|hi|hello|sup|yo|wassup|what's up|whats up)[\s!.?]*$/i.test(userText.trim());
+    
+    // If fresh start, clear old conversation history to prevent context contamination
+    if (isFreshStart) {
+      console.log('Fresh conversation start detected, clearing old history');
+      // Delete old conversation history for this user (start fresh)
+      await supabaseAdmin
+        .from('conversation_history')
+        .delete()
+        .eq('user_id', user.id);
+    }
+    
     // Try to use conversation history, but fall back if it fails
     try {
-      // Retrieve conversation history from database
+      // Retrieve conversation history from database (will be empty if fresh start)
       const { data: historyRows, error: historyErr } = await supabaseAdmin
         .from('conversation_history')
         .select('role, content, created_at')
