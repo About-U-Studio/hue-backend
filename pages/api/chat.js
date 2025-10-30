@@ -1,6 +1,6 @@
 import { applyCors } from '../../lib/cors';
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
-import { runAgent } from '../../lib/openaiAgent';
+import { runAgentWithHistory } from '../../lib/openaiAgent';
 
 const DAILY_LIMIT = 100;
 
@@ -20,9 +20,10 @@ export default async function handler(req, res) {
 
   try {
     const email = req.body?.email || 'anonymous@preview';
-    const userText = req.body?.messages?.[0]?.content || '';
-    const imageUrl = req.body?.messages?.[0]?.imageUrl || null; // NEW: accept image URL
+    const messages = req.body?.messages || [];  // Full conversation history from frontend
+    const imageUrl = req.body?.imageUrl || null;
 
+    // Ensure user exists
     const { data: user, error: upsertErr } = await supabaseAdmin
       .from('users')
       .upsert({ email }, { onConflict: 'email' })
@@ -33,6 +34,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ reply: 'Sorry, something went wrong.' });
     }
 
+    // Check daily limit
     const { startUtc, endUtc } = startEndUtcForTodayET();
     const { data: usageRows, error: usageErr } = await supabaseAdmin
       .from('message_usage')
@@ -46,19 +48,70 @@ export default async function handler(req, res) {
     }
 
     if ((usageRows?.length || 0) >= DAILY_LIMIT) {
-      return res.status(200).json({ reply: 'Thank you for trying out Hue, come back tomorrow...' });
+      return res.status(200).json({ 
+        reply: 'Oops! You\'ve used up your daily limit. Come back tomorrow for more design insights! 🎨',
+        dailyLimitReached: true 
+      });
     }
 
+    // Record usage
     const { error: insertErr } = await supabaseAdmin
       .from('message_usage')
       .insert({ user_id: user.id });
     if (insertErr) console.error('insert usage error', insertErr);
 
-    // Pass both text and image to agent
-    const replyText = await runAgent(userText, imageUrl);
+    // Get the latest user message
+    const userMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+    const userText = userMessage?.content || '';
+
+    // Retrieve conversation history from database
+    const { data: historyRows, error: historyErr } = await supabaseAdmin
+      .from('conversation_history')
+      .select('role, content, created_at')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: true })
+      .limit(20);  // Limit to last 20 messages for context
+
+    if (historyErr) {
+      console.error('history query error', historyErr);
+    }
+
+    // Combine database history with current messages
+    const conversationHistory = historyRows || [];
+    const formattedHistory = conversationHistory.map(h => ({
+      role: h.role,
+      content: h.content
+    }));
+
+    // Store the user's message in database
+    if (userText) {
+      await supabaseAdmin
+        .from('conversation_history')
+        .insert({
+          user_id: user.id,
+          role: 'user',
+          content: userText
+        });
+    }
+
+    // Run agent with full conversation history
+    const replyText = await runAgentWithHistory(formattedHistory, userText, imageUrl);
+
+    // Store the assistant's reply in database
+    if (replyText) {
+      await supabaseAdmin
+        .from('conversation_history')
+        .insert({
+          user_id: user.id,
+          role: 'assistant',
+          content: replyText
+        });
+    }
+
     return res.status(200).json({ reply: replyText || 'Sorry, something went wrong.' });
   } catch (e) {
     console.error('chat error', e);
     return res.status(200).json({ reply: 'Sorry, something went wrong.' });
   }
 }
+
