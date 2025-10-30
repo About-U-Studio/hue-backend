@@ -1,6 +1,6 @@
 import { applyCors } from '../../lib/cors';
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
-import { runAgentWithHistory } from '../../lib/openaiAgent';
+import { runAgent, runAgentWithHistory } from '../../lib/openaiAgent';
 
 const DAILY_LIMIT = 100;
 
@@ -20,7 +20,7 @@ export default async function handler(req, res) {
 
   try {
     const email = req.body?.email || 'anonymous@preview';
-    const messages = req.body?.messages || [];  // Full conversation history from frontend
+    const messages = req.body?.messages || [];
     const imageUrl = req.body?.imageUrl || null;
 
     // Ensure user exists
@@ -64,48 +64,64 @@ export default async function handler(req, res) {
     const userMessage = messages.length > 0 ? messages[messages.length - 1] : null;
     const userText = userMessage?.content || '';
 
-    // Retrieve conversation history from database
-    const { data: historyRows, error: historyErr } = await supabaseAdmin
-      .from('conversation_history')
-      .select('role, content, created_at')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: true })
-      .limit(20);  // Limit to last 20 messages for context
-
-    if (historyErr) {
-      console.error('history query error', historyErr);
-    }
-
-    // Combine database history with current messages
-    const conversationHistory = historyRows || [];
-    const formattedHistory = conversationHistory.map(h => ({
-      role: h.role,
-      content: h.content
-    }));
-
-    // Store the user's message in database
-    if (userText) {
-      await supabaseAdmin
+    let replyText = '';
+    
+    // Try to use conversation history, but fall back if it fails
+    try {
+      // Retrieve conversation history from database
+      const { data: historyRows, error: historyErr } = await supabaseAdmin
         .from('conversation_history')
-        .insert({
-          user_id: user.id,
-          role: 'user',
-          content: userText
-        });
-    }
+        .select('role, content, created_at')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: true })
+        .limit(20);
 
-    // Run agent with full conversation history
-    const replyText = await runAgentWithHistory(formattedHistory, userText, imageUrl);
+      if (historyErr) {
+        console.error('history query error (falling back to no history):', historyErr);
+        // Fall back to single message mode
+        replyText = await runAgent(userText, imageUrl);
+      } else {
+        // Use conversation history
+        const formattedHistory = (historyRows || []).map(h => ({
+          role: h.role,
+          content: h.content
+        }));
 
-    // Store the assistant's reply in database
-    if (replyText) {
-      await supabaseAdmin
-        .from('conversation_history')
-        .insert({
-          user_id: user.id,
-          role: 'assistant',
-          content: replyText
-        });
+        // Store the user's message
+        if (userText) {
+          const { error: storeUserErr } = await supabaseAdmin
+            .from('conversation_history')
+            .insert({
+              user_id: user.id,
+              role: 'user',
+              content: userText
+            });
+          if (storeUserErr) {
+            console.error('store user message error:', storeUserErr);
+          }
+        }
+
+        // Run agent with history
+        replyText = await runAgentWithHistory(formattedHistory, userText, imageUrl);
+
+        // Store the assistant's reply
+        if (replyText) {
+          const { error: storeAIErr } = await supabaseAdmin
+            .from('conversation_history')
+            .insert({
+              user_id: user.id,
+              role: 'assistant',
+              content: replyText
+            });
+          if (storeAIErr) {
+            console.error('store AI message error:', storeAIErr);
+          }
+        }
+      }
+    } catch (historyError) {
+      console.error('conversation history error (falling back):', historyError);
+      // Fall back to single message mode
+      replyText = await runAgent(userText, imageUrl);
     }
 
     return res.status(200).json({ reply: replyText || 'Sorry, something went wrong.' });
