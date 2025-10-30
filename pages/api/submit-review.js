@@ -1,3 +1,4 @@
+import { applyCors } from '../../lib/cors';
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
@@ -6,6 +7,9 @@ const supabase = createClient(
 );
 
 export default async function handler(req, res) {
+  // Handle CORS
+  if (applyCors(req, res)) return;
+  
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
