@@ -66,29 +66,22 @@ export default async function handler(req, res) {
 
     let replyText = '';
     
-    // CRITICAL: Detect if this is a fresh conversation start
-    // If user says just a greeting (hey, hi, hello), they're starting fresh - don't load old history
-    const isFreshStart = /^(hey|hi|hello|sup|yo|wassup|what's up|whats up)[\s!.?]*$/i.test(userText.trim());
-    
-    // If fresh start, clear old conversation history to prevent context contamination
-    if (isFreshStart) {
-      console.log('Fresh conversation start detected, clearing old history');
-      // Delete old conversation history for this user (start fresh)
-      await supabaseAdmin
-        .from('conversation_history')
-        .delete()
-        .eq('user_id', user.id);
-    }
-    
     // Try to use conversation history, but fall back if it fails
     try {
-      // Retrieve conversation history from database (will be empty if fresh start)
+      // Retrieve conversation history from database - CRITICAL: Filter by user_id to prevent cross-user history
       const { data: historyRows, error: historyErr } = await supabaseAdmin
         .from('conversation_history')
         .select('role, content, created_at')
-        .eq('user_id', user.id)
+        .eq('user_id', user.id) // CRITICAL: Only get history for THIS user
         .order('created_at', { ascending: true })
         .limit(20);
+      
+      // Double-check: Ensure all history rows belong to this user (security check)
+      if (historyRows && historyRows.some((row: any) => row.user_id !== user.id)) {
+        console.error('SECURITY WARNING: Found history rows from different user!');
+        // Return empty history as safety measure
+        historyRows.length = 0;
+      }
 
       if (historyErr) {
         console.error('history query error (falling back to no history):', historyErr);
@@ -144,3 +137,4 @@ export default async function handler(req, res) {
     return res.status(200).json({ reply: 'Sorry, something went wrong.' });
   }
 }
+
