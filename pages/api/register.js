@@ -15,6 +15,13 @@ export default async function handler(req, res) {
     const { count } = await supabaseAdmin.from('users').select('*', { count: 'exact', head: true });
     if ((count ?? 0) >= 100) return res.status(200).json({ ok: false, reason: 'beta_full' });
 
+    // Check if user already exists
+    const { data: existingUser } = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .eq('email', email)
+      .single();
+
     // Upsert user by email
     const { data: user, error } = await supabaseAdmin
       .from('users')
@@ -29,17 +36,22 @@ export default async function handler(req, res) {
       return res.status(500).json({ ok: false, reason: 'db_error' });
     }
 
-    // Log to Google Sheets
-    await appendToSheet({
-      timestamp: new Date().toISOString(),
-      role: audience || '',
-      first_name: firstName || '',
-      last_name: lastName || '',
-      email
-    });
+    // Only log to Google Sheets and send welcome email for NEW users
+    const isNewUser = !existingUser;
+    
+    if (isNewUser) {
+      // Log to Google Sheets
+      await appendToSheet({
+        timestamp: new Date().toISOString(),
+        role: audience || '',
+        first_name: firstName || '',
+        last_name: lastName || '',
+        email
+      });
 
-    // Send welcome email
-    await sendWelcomeEmail(email, firstName);
+      // Send welcome email only for new users
+      await sendWelcomeEmail(email, firstName);
+    }
 
     return res.status(200).json({ ok: true, userId: user?.id || null });
   } catch (e) {
