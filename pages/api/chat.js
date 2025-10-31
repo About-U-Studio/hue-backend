@@ -76,12 +76,7 @@ export default async function handler(req, res) {
         .order('created_at', { ascending: true })
         .limit(20);
       
-      // Double-check: Ensure all history rows belong to this user (security check)
-      if (historyRows && historyRows.some((row: any) => row.user_id !== user.id)) {
-        console.error('SECURITY WARNING: Found history rows from different user!');
-        // Return empty history as safety measure
-        historyRows.length = 0;
-      }
+      // Note: Already filtered by user_id in query above, so all rows belong to this user
 
       if (historyErr) {
         console.error('history query error (falling back to no history):', historyErr);
@@ -137,4 +132,3 @@ export default async function handler(req, res) {
     return res.status(200).json({ reply: 'Sorry, something went wrong.' });
   }
 }
-
