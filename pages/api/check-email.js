@@ -23,20 +23,19 @@ export default async function handler(req, res) {
       .ilike('email', normalizedEmail) // Case-insensitive match
       .single();
 
-    // If checking for duplicate names
+    // If checking for duplicate names (only during registration)
     if (firstName && lastName && !user) {
       const normalizedFirstName = firstName.toLowerCase().trim();
       const normalizedLastName = lastName.toLowerCase().trim();
       
       // Check if first name + last name combination already exists (case-insensitive)
-      const { data: nameMatches, error: nameError } = await supabaseAdmin
+      const { data: nameMatches } = await supabaseAdmin
         .from('users')
         .select('id, email, first_name, last_name')
         .ilike('first_name', normalizedFirstName)
         .ilike('last_name', normalizedLastName)
         .limit(1);
 
-      // If we found a match (even if query had an error, check the data)
       if (nameMatches && nameMatches.length > 0) {
         const nameMatch = nameMatches[0];
         return res.status(200).json({ 
@@ -56,4 +55,3 @@ export default async function handler(req, res) {
     return res.status(200).json({ exists: false, duplicateName: false });
   }
 }
-
