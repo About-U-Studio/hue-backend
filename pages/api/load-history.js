@@ -21,11 +21,14 @@ export default async function handler(req, res) {
   }
 
     try {
-        // Get user
+        // Normalize email to lowercase for case-insensitive comparison
+        const normalizedEmail = email.toLowerCase().trim();
+        
+        // Get user (case-insensitive email match)
         const { data: user, error: userError } = await supabase
             .from('users')
             .select('*')
-            .eq('email', email)
+            .ilike('email', normalizedEmail)
             .single();
 
         if (userError || !user) {
