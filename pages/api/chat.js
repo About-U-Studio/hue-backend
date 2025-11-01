@@ -19,11 +19,13 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ reply: 'method_not_allowed' });
 
   try {
-    const email = req.body?.email || 'anonymous@preview';
+    const emailRaw = req.body?.email || 'anonymous@preview';
+    // Normalize email to lowercase for case-insensitive comparison
+    const email = emailRaw.toLowerCase().trim();
     const messages = req.body?.messages || [];
     const imageUrl = req.body?.imageUrl || null;
 
-    // Ensure user exists
+    // Ensure user exists (normalize email to lowercase in database)
     const { data: user, error: upsertErr } = await supabaseAdmin
       .from('users')
       .upsert({ email }, { onConflict: 'email' })
