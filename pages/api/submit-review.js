@@ -21,11 +21,15 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Normalize email to lowercase for case-insensitive comparison
+    const normalizedEmail = email.toLowerCase().trim();
+    
     // Verify user exists in your database (prevents spam from random people)
+    // Use case-insensitive match
     const { data: user, error: userError } = await supabase
       .from('users')
       .select('first_name, last_name, audience')
-      .eq('email', email)
+      .ilike('email', normalizedEmail)
       .single();
 
     if (userError || !user) {
@@ -48,7 +52,7 @@ export default async function handler(req, res) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        email: email,
+        email: normalizedEmail, // Use normalized email
         firstName: user.first_name || '',
         lastName: user.last_name || '',
         audience: user.audience || '',
@@ -63,11 +67,10 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Failed to submit review' });
     }
 
-    console.log('Review submitted successfully for:', email);
+    console.log('Review submitted successfully for:', normalizedEmail);
     return res.status(200).json({ success: true, message: 'Review submitted' });
   } catch (error) {
     console.error('Submit review error:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 }
-
