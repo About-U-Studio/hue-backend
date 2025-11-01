@@ -15,18 +15,52 @@ export default async function handler(req, res) {
     const { count } = await supabaseAdmin.from('users').select('*', { count: 'exact', head: true });
     if ((count ?? 0) >= 100) return res.status(200).json({ ok: false, reason: 'beta_full' });
 
-    // Check if user already exists
+    // Normalize email to lowercase for case-insensitive comparison
+    const normalizedEmail = email.toLowerCase().trim();
+    const normalizedFirstName = firstName ? firstName.toLowerCase().trim() : null;
+    const normalizedLastName = lastName ? lastName.toLowerCase().trim() : null;
+
+    // Check if user already exists (case-insensitive email match)
     const { data: existingUser } = await supabaseAdmin
       .from('users')
       .select('id')
-      .eq('email', email)
+      .ilike('email', normalizedEmail)
       .single();
 
-    // Upsert user by email
+    // Check for duplicate name combination if names are provided
+    let duplicateName = false;
+    if (normalizedFirstName && normalizedLastName && !existingUser) {
+      const { data: nameMatches } = await supabaseAdmin
+        .from('users')
+        .select('id, email')
+        .ilike('first_name', normalizedFirstName)
+        .ilike('last_name', normalizedLastName)
+        .limit(1);
+      
+      if (nameMatches && nameMatches.length > 0) {
+        duplicateName = true;
+      }
+    }
+
+    // Return error if duplicate name found
+    if (duplicateName) {
+      return res.status(200).json({ 
+        ok: false, 
+        reason: 'duplicate_name',
+        message: 'A user with this name already exists'
+      });
+    }
+
+    // Upsert user by email (normalize email to lowercase in database)
     const { data: user, error } = await supabaseAdmin
       .from('users')
       .upsert(
-        { email, first_name: firstName || null, last_name: lastName || null, audience: audience || null },
+        { 
+          email: normalizedEmail, // Store normalized (lowercase) email
+          first_name: firstName || null, 
+          last_name: lastName || null, 
+          audience: audience || null 
+        },
         { onConflict: 'email' }
       )
       .select()
@@ -46,10 +80,10 @@ export default async function handler(req, res) {
         role: audience || '',
         first_name: firstName || '',
         last_name: lastName || '',
-        email
+        email: normalizedEmail // Use normalized email
       });
 
-      // Send welcome email only for new users
+      // Send welcome email only for new users (use original email for display)
       await sendWelcomeEmail(email, firstName);
     }
 
