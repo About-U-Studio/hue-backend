@@ -17,11 +17,14 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Email is required' });
     }
 
-    // Get user by email
+    // Normalize email to lowercase for case-insensitive comparison
+    const normalizedEmail = email.toLowerCase().trim();
+
+    // Get user by email (case-insensitive match)
     const { data: user, error: userError } = await supabaseAdmin
       .from('users')
       .select('id')
-      .eq('email', email)
+      .ilike('email', normalizedEmail)
       .single();
 
     if (userError || !user) {
@@ -52,7 +55,7 @@ export default async function handler(req, res) {
       // Don't fail - history was cleared, that's the important part
     }
 
-    console.log(`Cleared conversation history for user ${email}`);
+    console.log(`Cleared conversation history for user ${normalizedEmail}`);
     
     return res.status(200).json({ success: true, message: 'Conversation history cleared' });
   } catch (err) {
@@ -60,4 +63,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Internal server error' });
   }
 }
-
