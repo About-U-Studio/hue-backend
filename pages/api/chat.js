@@ -2,7 +2,7 @@ import { applyCors } from '../../lib/cors';
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
 import { runAgent, runAgentWithHistory } from '../../lib/openaiAgent';
 
-const DAILY_LIMIT = 100;
+const DAILY_LIMIT = 2;
 
 function startEndUtcForTodayET() {
   const tz = 'America/New_York';
