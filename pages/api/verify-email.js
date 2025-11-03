@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
 import { applyCors } from '../../lib/cors';
+import { sendWelcomeEmail } from '../../lib/mailer';
 
 export default async function handler(req, res) {
   // Handle CORS
@@ -30,7 +31,7 @@ export default async function handler(req, res) {
     // Find user with matching email and token
     const { data: user, error: userError } = await supabaseAdmin
       .from('users')
-      .select('id, email, email_verified, verification_token, verification_token_expires_at')
+      .select('id, email, first_name, email_verified, verification_token, verification_token_expires_at')
       .ilike('email', normalizedEmail)
       .single();
 
@@ -105,6 +106,14 @@ export default async function handler(req, res) {
           </body>
         </html>
       `);
+    }
+
+    // Send welcome email after successful verification
+    try {
+      await sendWelcomeEmail(email, user.first_name);
+    } catch (e) {
+      console.error('Failed to send welcome email:', e);
+      // Don't fail verification if welcome email fails
     }
 
     // Success!
