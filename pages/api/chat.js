@@ -3,7 +3,6 @@ import { supabaseAdmin } from '../../lib/supabaseAdmin';
 import { runAgent, runAgentWithHistory } from '../../lib/openaiAgent';
 import { isValidEmail, validateMessage, isValidUrl } from '../../lib/validation';
 import { rateLimitMiddleware } from '../../lib/rateLimit';
-import { verifyAuthToken } from '../../lib/auth';
 
 const DAILY_LIMIT = 100;
 const MAX_MESSAGE_LENGTH = 5000;
@@ -29,151 +28,14 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Verify authentication token (unless anonymous preview)
-    const authToken = req.headers.authorization?.replace('Bearer ', '') || req.body?.authToken;
     const emailRaw = req.body?.email || 'anonymous@preview';
     
-    // Allow anonymous preview without auth token
-    if (emailRaw === 'anonymous@preview') {
-      // Skip auth check for anonymous preview
-    } else {
-      // Require auth token for registered users
-      if (!authToken) {
-        return res.status(401).json({ reply: 'Authentication required. Please log in.' });
-      }
-
-      const user = await verifyAuthToken(authToken, supabaseAdmin);
-      if (!user) {
-        return res.status(401).json({ reply: 'Invalid or expired authentication token. Please log in again.' });
-      }
-
-      // Use verified user
-      const email = user.email;
-      const userId = user.id;
-
-      // Check if email is verified
-      if (!user.email_verified) {
-        return res.status(403).json({ 
-          reply: 'Please verify your email address before chatting. Check your inbox for a verification link.',
-          emailNotVerified: true 
-        });
-      }
-
-      // Validate email format
-      if (!isValidEmail(email)) {
-        return res.status(400).json({ reply: 'Invalid email format.' });
-      }
-
-      const messages = req.body?.messages || [];
-      const imageUrl = req.body?.imageUrl || null;
-      
-      // Validate imageUrl if provided
-      if (imageUrl && typeof imageUrl === 'string' && !isValidUrl(imageUrl) && !imageUrl.startsWith('data:image/')) {
-        return res.status(400).json({ reply: 'Invalid image URL format.' });
-      }
-
-      // Check daily limit
-      const { startUtc, endUtc } = startEndUtcForTodayET();
-      const { data: usageRows, error: usageErr } = await supabaseAdmin
-        .from('message_usage')
-        .select('id, created_at')
-        .eq('user_id', userId)
-        .gte('created_at', startUtc.toISOString())
-        .lte('created_at', endUtc.toISOString());
-      if (usageErr) {
-        console.error('usage query error', usageErr);
-        return res.status(200).json({ reply: 'Sorry, something went wrong.' });
-      }
-
-      if ((usageRows?.length || 0) >= DAILY_LIMIT) {
-        return res.status(200).json({ 
-          reply: 'Oops! You\'ve used up your daily limit. Come back tomorrow for more design insights! 🎨',
-          dailyLimitReached: true 
-        });
-      }
-
-      // Record usage
-      const { error: insertErr } = await supabaseAdmin
-        .from('message_usage')
-        .insert({ user_id: userId });
-      if (insertErr) console.error('insert usage error', insertErr);
-
-      // Get the latest user message
-      const userMessage = messages.length > 0 ? messages[messages.length - 1] : null;
-      const userText = userMessage?.content || '';
-      
-      // Validate message content if provided
-      if (userText) {
-        const messageValidation = validateMessage(userText, MAX_MESSAGE_LENGTH, MIN_MESSAGE_LENGTH);
-        if (!messageValidation.valid) {
-          return res.status(400).json({ reply: messageValidation.error || 'Invalid message format.' });
-        }
-      }
-
-      let replyText = '';
-      
-      // Try to use conversation history, but fall back if it fails
-      try {
-        // Retrieve conversation history from database - CRITICAL: Filter by user_id to prevent cross-user history
-        const { data: historyRows, error: historyErr } = await supabaseAdmin
-          .from('conversation_history')
-          .select('role, content, created_at')
-          .eq('user_id', userId) // CRITICAL: Only get history for THIS user
-          .order('created_at', { ascending: true })
-          .limit(20);
-
-        if (historyErr) {
-          console.error('history query error (falling back to no history):', historyErr);
-          // Fall back to single message mode
-          replyText = await runAgent(userText, imageUrl);
-        } else {
-          // Use conversation history
-          const formattedHistory = (historyRows || []).map(h => ({
-            role: h.role,
-            content: h.content
-          }));
-
-          // Store the user's message
-          if (userText) {
-            const { error: storeUserErr } = await supabaseAdmin
-              .from('conversation_history')
-              .insert({
-                user_id: userId,
-                role: 'user',
-                content: userText
-              });
-            if (storeUserErr) {
-              console.error('store user message error:', storeUserErr);
-            }
-          }
-
-          // Run agent with history
-          replyText = await runAgentWithHistory(formattedHistory, userText, imageUrl);
-
-          // Store the assistant's reply
-          if (replyText) {
-            const { error: storeAIErr } = await supabaseAdmin
-              .from('conversation_history')
-              .insert({
-                user_id: userId,
-                role: 'assistant',
-                content: replyText
-              });
-            if (storeAIErr) {
-              console.error('store AI message error:', storeAIErr);
-            }
-          }
-        }
-      } catch (historyError) {
-        console.error('conversation history error (falling back):', historyError);
-        // Fall back to single message mode
-        replyText = await runAgent(userText, imageUrl);
-      }
-
-      return res.status(200).json({ reply: replyText || 'Sorry, something went wrong.' });
+    // Validate email format (skip for anonymous@preview)
+    if (emailRaw !== 'anonymous@preview' && !isValidEmail(emailRaw)) {
+      return res.status(400).json({ reply: 'Invalid email format.' });
     }
     
-    // Anonymous preview mode (no auth required)
+    // Normalize email to lowercase for case-insensitive comparison
     const email = emailRaw.toLowerCase().trim();
     const messages = req.body?.messages || [];
     const imageUrl = req.body?.imageUrl || null;
@@ -182,6 +44,43 @@ export default async function handler(req, res) {
     if (imageUrl && typeof imageUrl === 'string' && !isValidUrl(imageUrl) && !imageUrl.startsWith('data:image/')) {
       return res.status(400).json({ reply: 'Invalid image URL format.' });
     }
+
+    // Ensure user exists (normalize email to lowercase in database)
+    const { data: user, error: upsertErr } = await supabaseAdmin
+      .from('users')
+      .upsert({ email }, { onConflict: 'email' })
+      .select()
+      .single();
+    if (upsertErr) {
+      console.error('ensure user error', upsertErr);
+      return res.status(200).json({ reply: 'Sorry, something went wrong.' });
+    }
+
+    // Check daily limit
+    const { startUtc, endUtc } = startEndUtcForTodayET();
+    const { data: usageRows, error: usageErr } = await supabaseAdmin
+      .from('message_usage')
+      .select('id, created_at')
+      .eq('user_id', user.id)
+      .gte('created_at', startUtc.toISOString())
+      .lte('created_at', endUtc.toISOString());
+    if (usageErr) {
+      console.error('usage query error', usageErr);
+      return res.status(200).json({ reply: 'Sorry, something went wrong.' });
+    }
+
+    if ((usageRows?.length || 0) >= DAILY_LIMIT) {
+      return res.status(200).json({ 
+        reply: 'Oops! You\'ve used up your daily limit. Come back tomorrow for more design insights! 🎨',
+        dailyLimitReached: true 
+      });
+    }
+
+    // Record usage
+    const { error: insertErr } = await supabaseAdmin
+      .from('message_usage')
+      .insert({ user_id: user.id });
+    if (insertErr) console.error('insert usage error', insertErr);
 
     // Get the latest user message
     const userMessage = messages.length > 0 ? messages[messages.length - 1] : null;
@@ -195,8 +94,67 @@ export default async function handler(req, res) {
       }
     }
 
-    // Run agent without history for anonymous preview
-    const replyText = await runAgent(userText, imageUrl);
+    let replyText = '';
+    
+    // Try to use conversation history, but fall back if it fails
+    try {
+      // Retrieve conversation history from database - CRITICAL: Filter by user_id to prevent cross-user history
+      const { data: historyRows, error: historyErr } = await supabaseAdmin
+        .from('conversation_history')
+        .select('role, content, created_at')
+        .eq('user_id', user.id) // CRITICAL: Only get history for THIS user
+        .order('created_at', { ascending: true })
+        .limit(20);
+      
+      // Note: Already filtered by user_id in query above, so all rows belong to this user
+
+      if (historyErr) {
+        console.error('history query error (falling back to no history):', historyErr);
+        // Fall back to single message mode
+        replyText = await runAgent(userText, imageUrl);
+      } else {
+        // Use conversation history
+        const formattedHistory = (historyRows || []).map(h => ({
+          role: h.role,
+          content: h.content
+        }));
+
+        // Store the user's message
+        if (userText) {
+          const { error: storeUserErr } = await supabaseAdmin
+            .from('conversation_history')
+            .insert({
+              user_id: user.id,
+              role: 'user',
+              content: userText
+            });
+          if (storeUserErr) {
+            console.error('store user message error:', storeUserErr);
+          }
+        }
+
+        // Run agent with history
+        replyText = await runAgentWithHistory(formattedHistory, userText, imageUrl);
+
+        // Store the assistant's reply
+        if (replyText) {
+          const { error: storeAIErr } = await supabaseAdmin
+            .from('conversation_history')
+            .insert({
+              user_id: user.id,
+              role: 'assistant',
+              content: replyText
+            });
+          if (storeAIErr) {
+            console.error('store AI message error:', storeAIErr);
+          }
+        }
+      }
+    } catch (historyError) {
+      console.error('conversation history error (falling back):', historyError);
+      // Fall back to single message mode
+      replyText = await runAgent(userText, imageUrl);
+    }
 
     return res.status(200).json({ reply: replyText || 'Sorry, something went wrong.' });
   } catch (e) {
