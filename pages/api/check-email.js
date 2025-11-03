@@ -1,16 +1,37 @@
 import { applyCors } from '../../lib/cors';
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
+import { isValidEmail, isValidName } from '../../lib/validation';
+import { rateLimitMiddleware } from '../../lib/rateLimit';
 
 export default async function handler(req, res) {
   if (applyCors(req, res)) return;
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+  
+  // Rate limiting - 10 email checks per IP per hour
+  if (rateLimitMiddleware(req, res, 'checkEmail')) {
+    return; // Response already sent
+  }
 
   try {
     const { email, firstName, lastName } = req.body;
     if (!email) {
       return res.status(400).json({ error: 'Email required' });
+    }
+    
+    // Validate email format
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ error: 'Invalid email format' });
+    }
+    
+    // Validate name fields if provided
+    if (firstName && !isValidName(firstName)) {
+      return res.status(400).json({ error: 'Invalid first name format' });
+    }
+    
+    if (lastName && !isValidName(lastName)) {
+      return res.status(400).json({ error: 'Invalid last name format' });
     }
 
     // Normalize email to lowercase for case-insensitive comparison
