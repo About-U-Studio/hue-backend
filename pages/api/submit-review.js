@@ -1,5 +1,7 @@
 import { applyCors } from '../../lib/cors';
 import { createClient } from '@supabase/supabase-js';
+import { isValidEmail, validateMessage } from '../../lib/validation';
+import { rateLimitMiddleware, checkRateLimit, getClientIP } from '../../lib/rateLimit';
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -13,11 +15,27 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+  
+  // Rate limiting - 10 reviews per IP per hour
+  if (rateLimitMiddleware(req, res, 'submitReview')) {
+    return; // Response already sent
+  }
 
   const { email, review } = req.body;
 
   if (!email || !review) {
     return res.status(400).json({ error: 'Email and review required' });
+  }
+  
+  // Validate email format
+  if (!isValidEmail(email)) {
+    return res.status(400).json({ error: 'Invalid email format' });
+  }
+  
+  // Validate review content (max 2000 characters)
+  const reviewValidation = validateMessage(review, 2000, 1);
+  if (!reviewValidation.valid) {
+    return res.status(400).json({ error: reviewValidation.error || 'Invalid review format' });
   }
 
   try {
@@ -35,6 +53,17 @@ export default async function handler(req, res) {
     if (userError || !user) {
       console.error('User not found:', email);
       return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // Additional rate limiting - 3 reviews per user per day
+    const userRateLimit = checkRateLimit(normalizedEmail, 'reviewPerUser');
+    if (!userRateLimit.allowed) {
+      const secondsUntilReset = Math.ceil((userRateLimit.resetAt - Date.now()) / 1000);
+      return res.status(429).json({
+        error: 'Rate limit exceeded',
+        message: `You've reached your daily review limit. Please try again tomorrow.`,
+        retryAfter: secondsUntilReset,
+      });
     }
 
     // Get webhook URL from environment variable (secure, not exposed to frontend)
