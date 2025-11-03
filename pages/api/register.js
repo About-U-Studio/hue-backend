@@ -1,10 +1,11 @@
 import { applyCors } from '../../lib/cors';
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
 import { appendToSheet } from '../../lib/sheets';
-import { sendWelcomeEmail } from '../../lib/mailer';
+import { sendWelcomeEmail, sendVerificationEmail } from '../../lib/mailer';
 import { isValidEmail, isValidName, validateRequiredFields } from '../../lib/validation';
 import { rateLimitMiddleware } from '../../lib/rateLimit';
 import { generateAuthToken, getAuthTokenExpiration } from '../../lib/auth';
+import { generateVerificationToken, getTokenExpiration } from '../../lib/tokens';
 
 export default async function handler(req, res) {
   if (applyCors(req, res)) return;
@@ -126,6 +127,10 @@ export default async function handler(req, res) {
       });
     }
 
+    // Generate verification token
+    const verificationToken = generateVerificationToken();
+    const tokenExpiresAt = getTokenExpiration();
+
     // Upsert user by email (normalize email to lowercase in database)
     // Since we checked existingUser above, this should only create new users
     const { data: user, error } = await supabaseAdmin
@@ -134,7 +139,10 @@ export default async function handler(req, res) {
         email: normalizedEmail, // Store normalized (lowercase) email
         first_name: firstName || null, 
         last_name: lastName || null, 
-        audience: audience || null 
+        audience: audience || null,
+        email_verified: false, // Email not verified yet
+        verification_token: verificationToken,
+        verification_token_expires_at: tokenExpiresAt
       })
       .select()
       .single();
@@ -161,10 +169,23 @@ export default async function handler(req, res) {
       email: normalizedEmail // Use normalized email
     });
 
-    // Send welcome email (use original email for display)
-    await sendWelcomeEmail(email, firstName);
+    // Send verification email (use original email for display)
+    try {
+      await sendVerificationEmail(email, firstName, verificationToken);
+    } catch (e) {
+      console.error('Failed to send verification email:', e);
+      // Still return success - verification email can be resent later
+    }
 
-    return res.status(200).json({ ok: true, userId: user?.id || null });
+    // Don't send welcome email until verified
+    // Welcome email will be sent after verification
+
+    return res.status(200).json({ 
+      ok: true, 
+      userId: user?.id || null,
+      needsVerification: true,
+      message: 'Registration successful! Please check your email to verify your account.'
+    });
   } catch (e) {
     console.error('register error', e);
     return res.status(500).json({ ok: false, reason: 'error' });
