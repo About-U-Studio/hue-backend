@@ -49,11 +49,19 @@ export default async function handler(req, res) {
     const { data: user, error: upsertErr } = await supabaseAdmin
       .from('users')
       .upsert({ email }, { onConflict: 'email' })
-      .select()
+      .select('id, email_verified')
       .single();
     if (upsertErr) {
       console.error('ensure user error', upsertErr);
       return res.status(200).json({ reply: 'Sorry, something went wrong.' });
+    }
+
+    // SECURITY: Check if email is verified before allowing chat
+    if (!user.email_verified) {
+      return res.status(200).json({ 
+        reply: 'Please verify your email address first. Check your inbox for a verification link.',
+        emailNotVerified: true
+      });
     }
 
     // Check daily limit
