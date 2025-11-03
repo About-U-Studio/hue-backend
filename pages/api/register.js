@@ -4,12 +4,15 @@ import { appendToSheet } from '../../lib/sheets';
 import { sendWelcomeEmail } from '../../lib/mailer';
 import { isValidEmail, isValidName, validateRequiredFields } from '../../lib/validation';
 import { rateLimitMiddleware } from '../../lib/rateLimit';
+import { generateAuthToken, getAuthTokenExpiration } from '../../lib/auth';
 
 export default async function handler(req, res) {
   if (applyCors(req, res)) return;
   if (req.method !== 'POST') return res.status(405).json({ ok: false, reason: 'method_not_allowed' });
   
-  // Rate limiting - 5 registrations per IP per hour
+  const { isLogin } = req.body || {};
+  
+  // Rate limiting - 15 registrations/login attempts per IP per hour
   if (rateLimitMiddleware(req, res, 'registration')) {
     return; // Response already sent
   }
@@ -56,12 +59,63 @@ export default async function handler(req, res) {
     const normalizedLastName = lastName ? lastName.toLowerCase().trim() : null;
 
     // Check if user already exists (case-insensitive email match)
+    // For login, we need to get full user data including email_verified status
+    const userFields = isLogin 
+      ? 'id, email, email_verified, auth_token, auth_token_expires_at' 
+      : 'id';
     const { data: existingUser, error: existingUserError } = await supabaseAdmin
       .from('users')
-      .select('id')
+      .select(userFields)
       .ilike('email', normalizedEmail)
       .maybeSingle(); // Use maybeSingle() to handle no user found (won't throw error)
 
+    // HANDLE LOGIN ATTEMPT
+    if (isLogin) {
+      if (!existingUser) {
+        // User doesn't exist - need to register first
+        return res.status(200).json({ 
+          ok: false, 
+          reason: 'user_not_found',
+          message: 'Email not found. Please register first.'
+        });
+      }
+      
+      // Check if email is verified
+      if (!existingUser.email_verified) {
+        return res.status(200).json({ 
+          ok: false, 
+          reason: 'email_not_verified',
+          message: 'Please verify your email address first. Check your inbox for a verification link.'
+        });
+      }
+      
+      // Generate new auth token for login
+      const authToken = generateAuthToken();
+      const authTokenExpiresAt = getAuthTokenExpiration();
+      
+      // Update user with new auth token
+      const { error: updateError } = await supabaseAdmin
+        .from('users')
+        .update({
+          auth_token: authToken,
+          auth_token_expires_at: authTokenExpiresAt
+        })
+        .eq('id', existingUser.id);
+      
+      if (updateError) {
+        console.error('Failed to update auth token:', updateError);
+        return res.status(500).json({ ok: false, reason: 'error', message: 'Failed to authenticate. Please try again.' });
+      }
+      
+      // Login successful - return auth token
+      return res.status(200).json({ 
+        ok: true, 
+        userId: existingUser.id,
+        authToken: authToken
+      });
+    }
+
+    // HANDLE REGISTRATION ATTEMPT
     // SECURITY FIX: If email already exists, return error (don't allow re-registration)
     // Only block duplicate emails (allow duplicate names - multiple people can have same name)
     if (existingUser) {
