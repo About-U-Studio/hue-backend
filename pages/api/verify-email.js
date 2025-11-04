@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
 import { applyCors } from '../../lib/cors';
 import { sendWelcomeEmail } from '../../lib/mailer';
+import { generateAuthToken, getAuthTokenExpiration } from '../../lib/auth';
 
 export default async function handler(req, res) {
   // Handle CORS
@@ -120,12 +121,38 @@ export default async function handler(req, res) {
 
     // Check if already verified
     if (user.email_verified) {
+      // Generate new auth token for already verified users
+      const authToken = generateAuthToken();
+      const authTokenExpiresAt = getAuthTokenExpiration();
+      
+      // Update auth token
+      await supabaseAdmin
+        .from('users')
+        .update({
+          auth_token: authToken,
+          auth_token_expires_at: authTokenExpiresAt
+        })
+        .eq('id', user.id);
+      
+      const frontendUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || 'https://aboutu-studio.framer.website';
+      const encodedEmail = encodeURIComponent(normalizedEmail);
+      const encodedToken = encodeURIComponent(authToken);
+      const redirectUrl = `${frontendUrl}?verified=true&email=${encodedEmail}&token=${encodedToken}`;
+      
       return res.status(200).send(`
         <html>
+          <head>
+            <title>Already Verified - Hue Chat</title>
+          </head>
           <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
             <h2>Already Verified</h2>
             <p>Your email has already been verified. You can now use Hue Chat!</p>
-            <p><a href="https://aboutu-studio.framer.website">Go to Hue Chat</a></p>
+            <p><a href="${redirectUrl}" style="display: inline-block; padding: 12px 24px; background-color: #0066ff; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0;">Go to Hue Chat</a></p>
+            <script>
+              setTimeout(function() {
+                window.location.href = "${redirectUrl}";
+              }, 2000);
+            </script>
           </body>
         </html>
       `);
@@ -168,12 +195,17 @@ export default async function handler(req, res) {
     }
 
     // Verify the email
+    const authToken = generateAuthToken();
+    const authTokenExpiresAt = getAuthTokenExpiration();
+    
     const { error: updateError } = await supabaseAdmin
       .from('users')
       .update({
         email_verified: true,
         verification_token: null, // Clear token after use
-        verification_token_expires_at: null
+        verification_token_expires_at: null,
+        auth_token: authToken, // Generate auth token for auto-login
+        auth_token_expires_at: authTokenExpiresAt
       })
       .eq('id', user.id);
 
@@ -197,13 +229,32 @@ export default async function handler(req, res) {
       // Don't fail verification if welcome email fails
     }
 
+    // Get the frontend URL from environment variable or use default
+    const frontendUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || 'https://aboutu-studio.framer.website';
+    
+    // Encode email and auth token for URL parameters
+    const encodedEmail = encodeURIComponent(normalizedEmail);
+    const encodedToken = encodeURIComponent(authToken);
+    
+    // Redirect URL with authentication parameters
+    const redirectUrl = `${frontendUrl}?verified=true&email=${encodedEmail}&token=${encodedToken}`;
+
     // Success!
     return res.status(200).send(`
       <html>
+        <head>
+          <title>Email Verified - Hue Chat</title>
+        </head>
         <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
           <h2 style="color: green;">Email Verified!</h2>
           <p>Your email has been verified successfully. You can now use Hue Chat!</p>
-          <p><a href="https://aboutu-studio.framer.website" style="display: inline-block; padding: 12px 24px; background-color: #0066ff; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0;">Go to Hue Chat</a></p>
+          <p><a href="${redirectUrl}" style="display: inline-block; padding: 12px 24px; background-color: #0066ff; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0;">Go to Hue Chat</a></p>
+          <script>
+            // Auto-redirect after 2 seconds
+            setTimeout(function() {
+              window.location.href = "${redirectUrl}";
+            }, 2000);
+          </script>
         </body>
       </html>
     `);
