@@ -16,7 +16,10 @@ export default async function handler(req, res) {
   applySecurityHeaders(res);
   
   if (applyCors(req, res)) return;
-  if (req.method !== 'POST') return res.status(405).json({ ok: false, reason: 'method_not_allowed' });
+  
+  if (req.method !== 'POST') {
+    return res.status(405).json({ ok: false, reason: 'method_not_allowed' });
+  }
   
   // Check request size before processing
   if (checkRequestSize(req, res)) {
@@ -272,8 +275,6 @@ export default async function handler(req, res) {
       console.log('Verification email sent successfully to:', normalizedEmail);
     } catch (e) {
       console.error('Failed to send verification email:', e);
-      console.error('Error details:', JSON.stringify(e, null, 2));
-      console.error('Email attempted:', normalizedEmail);
       // Still return success - verification email can be resent later
       // But log the error for debugging
     }
