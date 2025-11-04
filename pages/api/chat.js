@@ -94,11 +94,12 @@ export default async function handler(req, res) {
       });
     }
 
-    // Record usage
-    const { error: insertErr } = await supabaseAdmin
+    // Record usage (non-blocking - don't wait for this to complete)
+    const usagePromise = supabaseAdmin
       .from('message_usage')
-      .insert({ user_id: user.id });
-    if (insertErr) console.error('insert usage error', insertErr);
+      .insert({ user_id: user.id })
+      .then(() => {})
+      .catch((err) => console.error('insert usage error', err));
 
     // Get the latest user message
     const userMessage = messages.length > 0 ? messages[messages.length - 1] : null;
@@ -140,36 +141,33 @@ export default async function handler(req, res) {
           content: h.content
         }));
 
-        // Store the user's message
-        if (userText) {
-          const { error: storeUserErr } = await supabaseAdmin
-            .from('conversation_history')
-            .insert({
-              user_id: user.id,
-              role: 'user',
-              content: userText
-            });
-          if (storeUserErr) {
-            console.error('store user message error:', storeUserErr);
-          }
-        }
+        // Store the user's message (non-blocking - don't wait)
+        const storeUserPromise = userText ? supabaseAdmin
+          .from('conversation_history')
+          .insert({
+            user_id: user.id,
+            role: 'user',
+            content: userText
+          })
+          .then(() => {})
+          .catch((err) => console.error('store user message error:', err)) : Promise.resolve();
 
-        // Run agent with history
+        // Run agent with history (this is the slow part, so we do it while storing user message)
         replyText = await runAgentWithHistory(formattedHistory, userText, imageUrl);
 
-        // Store the assistant's reply
-        if (replyText) {
-          const { error: storeAIErr } = await supabaseAdmin
-            .from('conversation_history')
-            .insert({
-              user_id: user.id,
-              role: 'assistant',
-              content: replyText
-            });
-          if (storeAIErr) {
-            console.error('store AI message error:', storeAIErr);
-          }
-        }
+        // Store the assistant's reply (non-blocking - don't wait)
+        const storeAIPromise = replyText ? supabaseAdmin
+          .from('conversation_history')
+          .insert({
+            user_id: user.id,
+            role: 'assistant',
+            content: replyText
+          })
+          .then(() => {})
+          .catch((err) => console.error('store AI message error:', err)) : Promise.resolve();
+
+        // Wait for both storage operations to complete (but don't block response)
+        await Promise.allSettled([storeUserPromise, storeAIPromise]);
       }
     } catch (historyError) {
       console.error('conversation history error (falling back):', historyError);
