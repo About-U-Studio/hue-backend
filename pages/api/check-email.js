@@ -2,8 +2,8 @@ import { applyCors } from '../../lib/cors';
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
 import { isValidEmail, isValidName, sanitizeString } from '../../lib/validation';
 import { rateLimitMiddleware } from '../../lib/rateLimit';
-import { applySecurityHeaders } from '../../lib/securityHeaders.js';
-import { checkRequestSize } from '../../lib/requestLimits.js';
+import { applySecurityHeaders } from '../../lib/securityHeaders';
+import { checkRequestSize } from '../../lib/requestLimits';
 
 export default async function handler(req, res) {
   // Apply security headers
@@ -75,3 +75,4 @@ export default async function handler(req, res) {
     return res.status(200).json({ exists: false, duplicateName: false });
   }
 }
+
