@@ -1,12 +1,22 @@
 import { applyCors } from '../../lib/cors';
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
-import { isValidEmail, isValidName } from '../../lib/validation';
+import { isValidEmail, isValidName, sanitizeString } from '../../lib/validation';
 import { rateLimitMiddleware } from '../../lib/rateLimit';
+import { applySecurityHeaders } from '../../lib/securityHeaders.js';
+import { checkRequestSize } from '../../lib/requestLimits.js';
 
 export default async function handler(req, res) {
+  // Apply security headers
+  applySecurityHeaders(res);
+  
   if (applyCors(req, res)) return;
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+  
+  // Check request size before processing
+  if (checkRequestSize(req, res)) {
+    return; // Response already sent
   }
   
   // Rate limiting - 10 email checks per IP per hour
@@ -20,22 +30,26 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Email required' });
     }
     
-    // Validate email format
-    if (!isValidEmail(email)) {
+    // Sanitize and validate email format
+    const sanitizedEmail = email ? sanitizeString(email.trim()) : '';
+    if (!isValidEmail(sanitizedEmail)) {
       return res.status(400).json({ error: 'Invalid email format' });
     }
     
-    // Validate name fields if provided
-    if (firstName && !isValidName(firstName)) {
+    // Sanitize and validate name fields if provided
+    const sanitizedFirstName = firstName ? sanitizeString(firstName.trim()) : null;
+    const sanitizedLastName = lastName ? sanitizeString(lastName.trim()) : null;
+    
+    if (sanitizedFirstName && !isValidName(sanitizedFirstName)) {
       return res.status(400).json({ error: 'Invalid first name format' });
     }
     
-    if (lastName && !isValidName(lastName)) {
+    if (sanitizedLastName && !isValidName(sanitizedLastName)) {
       return res.status(400).json({ error: 'Invalid last name format' });
     }
 
     // Normalize email to lowercase for case-insensitive comparison
-    const normalizedEmail = email.toLowerCase().trim();
+    const normalizedEmail = sanitizedEmail.toLowerCase().trim();
 
     // Check if user exists (case-insensitive email match)
     const { data: user, error: userError } = await supabaseAdmin
@@ -61,4 +75,3 @@ export default async function handler(req, res) {
     return res.status(200).json({ exists: false, duplicateName: false });
   }
 }
-
