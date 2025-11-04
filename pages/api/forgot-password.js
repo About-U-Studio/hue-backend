@@ -1,14 +1,15 @@
 import { applyCors } from '../../lib/cors';
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
-import { validatePassword, hashPassword } from '../../lib/password';
+import { sendPasswordResetEmail } from '../../lib/mailer';
 import { isValidEmail, sanitizeString } from '../../lib/validation';
 import { rateLimitMiddleware } from '../../lib/rateLimit';
+import { generateVerificationToken, getTokenExpiration } from '../../lib/tokens';
 import { applySecurityHeaders } from '../../lib/securityHeaders';
 import { checkRequestSize } from '../../lib/requestLimits';
 
 /**
- * Reset Password API Endpoint
- * Verifies reset token and updates password
+ * Forgot Password API Endpoint
+ * Sends a password reset email to the user
  */
 export default async function handler(req, res) {
   applySecurityHeaders(res);
@@ -22,130 +23,95 @@ export default async function handler(req, res) {
     return; // Response already sent
   }
   
-  // Rate limiting - 10 password reset attempts per IP per hour
+  // Rate limiting - 5 password reset requests per IP per hour
   if (rateLimitMiddleware(req, res, 'password_reset')) {
     return; // Response already sent
   }
   
   try {
-    const { email, token, newPassword } = req.body || {};
+    const { email } = req.body || {};
     
-    // Validate required fields
-    if (!email || !token || !newPassword) {
-      return res.status(400).json({ 
-        ok: false, 
-        reason: 'missing_fields', 
-        message: 'Email, token, and new password are required.' 
-      });
+    // Validate email
+    if (!email) {
+      return res.status(400).json({ ok: false, reason: 'missing_email', message: 'Email is required.' });
     }
     
-    // Sanitize and validate email
     const sanitizedEmail = email ? sanitizeString(email.trim()) : '';
     if (!isValidEmail(sanitizedEmail)) {
       return res.status(400).json({ ok: false, reason: 'invalid_email', message: 'Invalid email format.' });
     }
     
+    // Normalize email to lowercase
     const normalizedEmail = sanitizedEmail.toLowerCase().trim();
     
-    // Validate password
-    const passwordValidation = validatePassword(newPassword);
-    if (!passwordValidation.valid) {
-      return res.status(400).json({ 
-        ok: false, 
-        reason: 'invalid_password', 
-        message: passwordValidation.error 
-      });
-    }
-    
-    // Find user and verify reset token
+    // Find user by email
     const { data: user, error: userError } = await supabaseAdmin
       .from('users')
-      .select('id, email, password_reset_token, password_reset_token_expires_at')
+      .select('id, email, first_name, email_verified')
       .ilike('email', normalizedEmail)
       .single();
     
+    // SECURITY: Always return success message (don't reveal if email exists)
+    // This prevents email enumeration attacks
     if (userError || !user) {
-      return res.status(400).json({ 
-        ok: false, 
-        reason: 'invalid_token', 
-        message: 'Invalid or expired reset token.' 
+      // User doesn't exist, but return success anyway
+      console.log('Password reset requested for non-existent email:', normalizedEmail);
+      return res.status(200).json({ 
+        ok: true, 
+        message: 'If an account with that email exists, a password reset link has been sent.' 
       });
     }
     
-    // Check if reset token exists
-    if (!user.password_reset_token) {
-      return res.status(400).json({ 
-        ok: false, 
-        reason: 'invalid_token', 
-        message: 'Invalid or expired reset token.' 
+    // Check if email is verified
+    if (!user.email_verified) {
+      // Still return success (security best practice)
+      console.log('Password reset requested for unverified email:', normalizedEmail);
+      return res.status(200).json({ 
+        ok: true, 
+        message: 'If an account with that email exists, a password reset link has been sent.' 
       });
     }
     
-    // Verify token matches
-    const decodedToken = token.trim();
-    const storedToken = user.password_reset_token.trim();
+    // Generate reset token
+    const resetToken = generateVerificationToken();
+    const tokenExpiresAt = getTokenExpiration(); // 24 hours
     
-    if (storedToken !== decodedToken) {
-      return res.status(400).json({ 
-        ok: false, 
-        reason: 'invalid_token', 
-        message: 'Invalid or expired reset token.' 
-      });
-    }
-    
-    // Check if token expired
-    if (user.password_reset_token_expires_at) {
-      const expiresAt = new Date(user.password_reset_token_expires_at);
-      if (new Date() > expiresAt) {
-        return res.status(400).json({ 
-          ok: false, 
-          reason: 'token_expired', 
-          message: 'This reset link has expired. Please request a new one.' 
-        });
-      }
-    }
-    
-    // Hash new password
-    let passwordHash;
-    try {
-      passwordHash = await hashPassword(newPassword);
-    } catch (error) {
-      console.error('Password hashing error:', error);
-      return res.status(500).json({ 
-        ok: false, 
-        reason: 'error', 
-        message: 'Failed to process password. Please try again.' 
-      });
-    }
-    
-    // Update password and clear reset token
+    // Store reset token in database
     const { error: updateError } = await supabaseAdmin
       .from('users')
       .update({
-        password_hash: passwordHash,
-        password_reset_token: null,
-        password_reset_token_expires_at: null
+        password_reset_token: resetToken,
+        password_reset_token_expires_at: tokenExpiresAt
       })
       .eq('id', user.id);
     
     if (updateError) {
-      console.error('Failed to update password:', updateError);
-      return res.status(500).json({ 
-        ok: false, 
-        reason: 'error', 
-        message: 'Failed to reset password. Please try again.' 
+      console.error('Failed to store password reset token:', updateError);
+      // Still return success (security best practice)
+      return res.status(200).json({ 
+        ok: true, 
+        message: 'If an account with that email exists, a password reset link has been sent.' 
       });
     }
     
-    console.log('✅ Password reset successful for:', normalizedEmail);
+    // Send password reset email
+    try {
+      await sendPasswordResetEmail(normalizedEmail, user.first_name, resetToken);
+      console.log('✅ Password reset email sent to:', normalizedEmail);
+    } catch (e) {
+      console.error('Failed to send password reset email:', e);
+      // Still return success (security best practice)
+    }
     
+    // Always return success (security best practice - prevents email enumeration)
     return res.status(200).json({ 
       ok: true, 
-      message: 'Password has been reset successfully. You can now sign in with your new password.' 
+      message: 'If an account with that email exists, a password reset link has been sent.' 
     });
     
   } catch (e) {
-    console.error('Reset password error:', e);
+    console.error('Forgot password error:', e);
     return res.status(500).json({ ok: false, reason: 'error', message: 'Something went wrong. Please try again later.' });
   }
 }
+
