@@ -168,35 +168,41 @@ export default async function handler(req, res) {
           <head>
             <title>Redirecting...</title>
             <script>
-              // Store reset data in sessionStorage FIRST (before redirect)
+              // Store reset data in MULTIPLE locations for maximum reliability
               try {
+                // Method 1: localStorage (more persistent than sessionStorage)
+                localStorage.setItem('huechat_reset_email', ${JSON.stringify(normalizedEmail)});
+                localStorage.setItem('huechat_reset_token', ${JSON.stringify(token)});
+                localStorage.setItem('huechat_reset_active', 'true');
+                localStorage.setItem('huechat_reset_timestamp', Date.now().toString());
+                
+                // Method 2: sessionStorage (backup)
                 sessionStorage.setItem('huechat_reset_email', ${JSON.stringify(normalizedEmail)});
                 sessionStorage.setItem('huechat_reset_token', ${JSON.stringify(token)});
                 sessionStorage.setItem('huechat_reset_active', 'true');
-                console.log('🔐 Stored reset data in sessionStorage:', {
+                
+                console.log('🔐 Stored reset data in localStorage AND sessionStorage:', {
                   email: ${JSON.stringify(normalizedEmail)},
                   tokenLength: ${token.length},
                   active: 'true'
                 });
                 
                 // Verify it was stored
-                const verifyEmail = sessionStorage.getItem('huechat_reset_email');
-                const verifyToken = sessionStorage.getItem('huechat_reset_token');
-                const verifyActive = sessionStorage.getItem('huechat_reset_active');
-                console.log('🔐 Verified sessionStorage:', {
-                  email: verifyEmail ? 'set' : 'missing',
-                  token: verifyToken ? 'set' : 'missing',
-                  active: verifyActive
+                const verifyLocalEmail = localStorage.getItem('huechat_reset_email');
+                const verifySessionEmail = sessionStorage.getItem('huechat_reset_email');
+                console.log('🔐 Verified storage:', {
+                  localStorage: verifyLocalEmail ? 'set' : 'missing',
+                  sessionStorage: verifySessionEmail ? 'set' : 'missing'
                 });
               } catch (e) {
                 console.error('Failed to store reset data:', e);
               }
               
-              // Wait 100ms to ensure sessionStorage is fully written before redirect
+              // Wait 200ms to ensure storage is fully written before redirect
               setTimeout(function() {
                 console.log('🔐 Redirecting to:', ${JSON.stringify(redirectUrl)});
                 window.location.replace(${JSON.stringify(redirectUrl)});
-              }, 100);
+              }, 200);
             </script>
             <meta http-equiv="refresh" content="1;url=${redirectUrl}">
           </head>
@@ -382,4 +388,6 @@ export default async function handler(req, res) {
   // POST requests are handled by reset-password.js API endpoint
   return res.status(405).json({ ok: false, reason: 'method_not_allowed' });
 }
+
+
 
