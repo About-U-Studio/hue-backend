@@ -173,24 +173,41 @@ export default async function handler(req, res) {
                 sessionStorage.setItem('huechat_reset_email', ${JSON.stringify(normalizedEmail)});
                 sessionStorage.setItem('huechat_reset_token', ${JSON.stringify(token)});
                 sessionStorage.setItem('huechat_reset_active', 'true');
-                console.log('🔐 Stored reset data in sessionStorage');
+                console.log('🔐 Stored reset data in sessionStorage:', {
+                  email: ${JSON.stringify(normalizedEmail)},
+                  tokenLength: ${token.length},
+                  active: 'true'
+                });
+                
+                // Verify it was stored
+                const verifyEmail = sessionStorage.getItem('huechat_reset_email');
+                const verifyToken = sessionStorage.getItem('huechat_reset_token');
+                const verifyActive = sessionStorage.getItem('huechat_reset_active');
+                console.log('🔐 Verified sessionStorage:', {
+                  email: verifyEmail ? 'set' : 'missing',
+                  token: verifyToken ? 'set' : 'missing',
+                  active: verifyActive
+                });
               } catch (e) {
                 console.error('Failed to store reset data:', e);
               }
               
-              // Immediate redirect - use replace to avoid back button issues
-              window.location.replace(${JSON.stringify(redirectUrl)});
+              // Wait 100ms to ensure sessionStorage is fully written before redirect
+              setTimeout(function() {
+                console.log('🔐 Redirecting to:', ${JSON.stringify(redirectUrl)});
+                window.location.replace(${JSON.stringify(redirectUrl)});
+              }, 100);
             </script>
-            <meta http-equiv="refresh" content="0;url=${redirectUrl}">
+            <meta http-equiv="refresh" content="1;url=${redirectUrl}">
           </head>
           <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
             <p>Redirecting to password reset page...</p>
             <p>If you are not redirected, <a href="${redirectUrl}">click here</a>.</p>
             <script>
-              // Fallback: redirect after 500ms if JavaScript didn't work
+              // Fallback: redirect after 1 second if JavaScript didn't work
               setTimeout(function() {
                 window.location.replace(${JSON.stringify(redirectUrl)});
-              }, 500);
+              }, 1000);
             </script>
           </body>
         </html>
@@ -365,6 +382,4 @@ export default async function handler(req, res) {
   // POST requests are handled by reset-password.js API endpoint
   return res.status(405).json({ ok: false, reason: 'method_not_allowed' });
 }
-
-
 
