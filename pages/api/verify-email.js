@@ -12,14 +12,21 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { token, email } = req.query;
+    // Decode URL parameters properly
+    const token = req.query.token ? decodeURIComponent(req.query.token) : null;
+    const email = req.query.email ? decodeURIComponent(req.query.email) : null;
+
+    console.log('Verification request received:', { token: token ? 'present' : 'missing', email: email || 'missing' });
 
     if (!token || !email) {
+      console.error('Missing token or email in verification request');
       return res.status(400).send(`
         <html>
           <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
             <h2>Verification Failed</h2>
             <p>Missing token or email. Please check your verification link.</p>
+            <p>Token: ${token ? 'present' : 'missing'}</p>
+            <p>Email: ${email || 'missing'}</p>
           </body>
         </html>
       `);
@@ -59,13 +66,22 @@ export default async function handler(req, res) {
       `);
     }
 
-    // Check if token matches
-    if (user.verification_token !== token) {
+    // Check if token matches (compare decoded token)
+    const decodedToken = token.trim();
+    const storedToken = user.verification_token ? user.verification_token.trim() : null;
+    
+    if (!storedToken || storedToken !== decodedToken) {
+      console.error('Token mismatch:', { 
+        storedTokenPresent: !!storedToken, 
+        decodedTokenLength: decodedToken.length,
+        storedTokenLength: storedToken?.length 
+      });
       return res.status(400).send(`
         <html>
           <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
             <h2>Verification Failed</h2>
             <p>Invalid verification token. The link may have expired or already been used.</p>
+            <p>Please try clicking the full link in the email, or request a new verification email.</p>
           </body>
         </html>
       `);
