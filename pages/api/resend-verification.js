@@ -75,17 +75,20 @@ export default async function handler(req, res) {
 
     // Send verification email
     try {
-      await sendVerificationEmail(email, user.first_name, verificationToken);
+      console.log('Resending verification email to:', email);
+      const result = await sendVerificationEmail(email, user.first_name, verificationToken);
+      console.log('Verification email resent successfully:', result);
       return res.status(200).json({ 
         ok: true, 
         message: 'Verification email sent! Please check your inbox.'
       });
     } catch (e) {
       console.error('Failed to send verification email:', e);
+      console.error('Error details:', JSON.stringify(e, null, 2));
       return res.status(500).json({ 
         ok: false, 
         reason: 'error', 
-        message: 'Failed to send verification email. Please try again later.'
+        message: e.message || 'Failed to send verification email. Please try again later.'
       });
     }
   } catch (e) {
@@ -93,3 +96,4 @@ export default async function handler(req, res) {
     return res.status(500).json({ ok: false, reason: 'error' });
   }
 }
+
