@@ -40,15 +40,19 @@ export default async function handler(req, res) {
     // Check if user exists (case-insensitive email match)
     const { data: user, error: userError } = await supabaseAdmin
       .from('users')
-      .select('id, email, first_name, last_name')
+      .select('id, email, first_name, last_name, email_verified')
       .ilike('email', normalizedEmail) // Case-insensitive match
       .maybeSingle();
 
     // NOTE: Duplicate names are now allowed (people can have same names)
     // Only checking for duplicate email
     
+    // Ensure verified is explicitly a boolean (handle null, undefined, etc.)
+    const isVerified = user?.email_verified === true || user?.email_verified === 'true' || user?.email_verified === 1;
+    
     return res.status(200).json({ 
       exists: !!user,
+      verified: isVerified, // Explicitly boolean
       duplicateName: false // Always false - duplicate names are allowed
     });
   } catch (e) {
