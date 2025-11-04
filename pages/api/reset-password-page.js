@@ -146,74 +146,257 @@ export default async function handler(req, res) {
         }
       }
       
-      // Token is valid - redirect to frontend with reset parameters
+      // Token is valid - show reset password form directly (no redirect needed)
       const frontendUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || 'https://aboutu-studio.framer.website';
-      const encodedEmail = encodeURIComponent(normalizedEmail);
-      const encodedToken = encodeURIComponent(token);
       
-      // Use hash-based URL as fallback (more reliable than query params)
-      const hashData = btoa(JSON.stringify({ email: normalizedEmail, token: token }));
-      const redirectUrl = `${frontendUrl}?resetPassword=true&email=${encodedEmail}&token=${encodedToken}`;
-      const hashRedirectUrl = `${frontendUrl}#resetPassword=${hashData}`;
+      // Determine API base URL for client-side fetch
+      let apiBase = process.env.NEXT_PUBLIC_BASE_URL;
+      if (!apiBase && process.env.VERCEL_URL) {
+        apiBase = `https://${process.env.VERCEL_URL}`;
+      }
+      if (!apiBase) {
+        // Fallback: use current request origin
+        const protocol = req.headers['x-forwarded-proto'] || 'https';
+        const host = req.headers.host || req.headers['x-forwarded-host'];
+        apiBase = `${protocol}://${host}`;
+      }
       
-      console.log('🔐 Redirecting to frontend for password reset:', redirectUrl);
-      console.log('🔐 Hash fallback URL:', hashRedirectUrl);
+      console.log('🔐 Showing password reset form for:', normalizedEmail);
       
-      // Use HTML redirect with sessionStorage fallback to preserve reset data
-      // Store in sessionStorage as backup in case query params get stripped
       res.setHeader('Content-Type', 'text/html');
       return res.status(200).send(`
         <!DOCTYPE html>
         <html>
           <head>
-            <title>Redirecting...</title>
+            <title>Reset Your Password - Hue</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+              * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+              }
+              body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+                background: #f5f5f5;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                min-height: 100vh;
+                padding: 20px;
+              }
+              .container {
+                background: white;
+                padding: 40px;
+                border-radius: 12px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                max-width: 400px;
+                width: 100%;
+              }
+              h1 {
+                margin: 0 0 10px 0;
+                font-size: 24px;
+                color: #111;
+                font-weight: 600;
+              }
+              p {
+                color: #666;
+                font-size: 14px;
+                margin: 0 0 24px 0;
+              }
+              .form-group {
+                margin-bottom: 16px;
+              }
+              label {
+                display: block;
+                margin-bottom: 8px;
+                font-size: 14px;
+                color: #333;
+                font-weight: 500;
+              }
+              input {
+                width: 100%;
+                padding: 12px;
+                border: 1px solid #ddd;
+                border-radius: 8px;
+                font-size: 14px;
+                font-family: inherit;
+                transition: border-color 0.2s;
+              }
+              input:focus {
+                outline: none;
+                border-color: #0066ff;
+              }
+              input.error {
+                border-color: #ff0000;
+              }
+              .error-message {
+                color: #ff0000;
+                font-size: 12px;
+                margin-top: 4px;
+                display: none;
+              }
+              .error-message.show {
+                display: block;
+              }
+              button {
+                width: 100%;
+                padding: 12px;
+                background: #111;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                font-size: 14px;
+                cursor: pointer;
+                font-weight: 500;
+                transition: background 0.2s;
+                margin-top: 8px;
+              }
+              button:hover:not(:disabled) {
+                background: #333;
+              }
+              button:disabled {
+                background: #ccc;
+                cursor: not-allowed;
+              }
+              .success {
+                color: #00aa00;
+                font-size: 14px;
+                margin-top: 16px;
+                padding: 12px;
+                background: #f0fff0;
+                border-radius: 8px;
+                display: none;
+              }
+              .success.show {
+                display: block;
+              }
+              .password-requirements {
+                font-size: 12px;
+                color: #666;
+                margin-top: 4px;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <h1>Reset Your Password</h1>
+              <p>Enter your new password below.</p>
+              <form id="resetForm">
+                <div class="form-group">
+                  <label for="password">New Password</label>
+                  <input type="password" id="password" placeholder="Minimum 8 characters" required>
+                  <div class="error-message" id="passwordError"></div>
+                  <div class="password-requirements">Must contain: uppercase, lowercase, number</div>
+                </div>
+                <div class="form-group">
+                  <label for="confirmPassword">Confirm Password</label>
+                  <input type="password" id="confirmPassword" placeholder="Re-enter your password" required>
+                  <div class="error-message" id="confirmError"></div>
+                </div>
+                <button type="submit" id="submitBtn">Reset Password</button>
+                <div class="error-message" id="formError"></div>
+                <div class="success" id="success">
+                  Password reset successful! Redirecting to login...
+                </div>
+              </form>
+            </div>
             <script>
-              // Store reset data in MULTIPLE locations for maximum reliability
-              try {
-                // Method 1: localStorage (more persistent than sessionStorage)
-                localStorage.setItem('huechat_reset_email', ${JSON.stringify(normalizedEmail)});
-                localStorage.setItem('huechat_reset_token', ${JSON.stringify(token)});
-                localStorage.setItem('huechat_reset_active', 'true');
-                localStorage.setItem('huechat_reset_timestamp', Date.now().toString());
-                
-                // Method 2: sessionStorage (backup)
-                sessionStorage.setItem('huechat_reset_email', ${JSON.stringify(normalizedEmail)});
-                sessionStorage.setItem('huechat_reset_token', ${JSON.stringify(token)});
-                sessionStorage.setItem('huechat_reset_active', 'true');
-                
-                console.log('🔐 Stored reset data in localStorage AND sessionStorage:', {
-                  email: ${JSON.stringify(normalizedEmail)},
-                  tokenLength: ${token.length},
-                  active: 'true'
-                });
-                
-                // Verify it was stored
-                const verifyLocalEmail = localStorage.getItem('huechat_reset_email');
-                const verifySessionEmail = sessionStorage.getItem('huechat_reset_email');
-                console.log('🔐 Verified storage:', {
-                  localStorage: verifyLocalEmail ? 'set' : 'missing',
-                  sessionStorage: verifySessionEmail ? 'set' : 'missing'
-                });
-              } catch (e) {
-                console.error('Failed to store reset data:', e);
+              const form = document.getElementById('resetForm');
+              const passwordInput = document.getElementById('password');
+              const confirmInput = document.getElementById('confirmPassword');
+              const submitBtn = document.getElementById('submitBtn');
+              const passwordError = document.getElementById('passwordError');
+              const confirmError = document.getElementById('confirmError');
+              const formError = document.getElementById('formError');
+              const successDiv = document.getElementById('success');
+              
+              const apiBase = ${JSON.stringify(apiBase)};
+              
+              function validatePassword(password) {
+                if (password.length < 8) {
+                  return { valid: false, error: 'Password must be at least 8 characters long.' };
+                }
+                if (!/[A-Z]/.test(password)) {
+                  return { valid: false, error: 'Password must contain at least one uppercase letter.' };
+                }
+                if (!/[a-z]/.test(password)) {
+                  return { valid: false, error: 'Password must contain at least one lowercase letter.' };
+                }
+                if (!/[0-9]/.test(password)) {
+                  return { valid: false, error: 'Password must contain at least one number.' };
+                }
+                return { valid: true };
               }
               
-              // Wait 200ms to ensure storage is fully written before redirect
-              setTimeout(function() {
-                console.log('🔐 Redirecting to:', ${JSON.stringify(redirectUrl)});
-                window.location.replace(${JSON.stringify(redirectUrl)});
-              }, 200);
-            </script>
-            <meta http-equiv="refresh" content="1;url=${redirectUrl}">
-          </head>
-          <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
-            <p>Redirecting to password reset page...</p>
-            <p>If you are not redirected, <a href="${redirectUrl}">click here</a>.</p>
-            <script>
-              // Fallback: redirect after 1 second if JavaScript didn't work
-              setTimeout(function() {
-                window.location.replace(${JSON.stringify(redirectUrl)});
-              }, 1000);
+              form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                
+                // Clear previous errors
+                passwordError.classList.remove('show');
+                confirmError.classList.remove('show');
+                formError.classList.remove('show');
+                passwordInput.classList.remove('error');
+                confirmInput.classList.remove('error');
+                
+                const password = passwordInput.value.trim();
+                const confirmPassword = confirmInput.value.trim();
+                
+                // Validate passwords match
+                if (password !== confirmPassword) {
+                  confirmError.textContent = 'Passwords do not match.';
+                  confirmError.classList.add('show');
+                  confirmInput.classList.add('error');
+                  return;
+                }
+                
+                // Validate password strength
+                const passwordValidation = validatePassword(password);
+                if (!passwordValidation.valid) {
+                  passwordError.textContent = passwordValidation.error;
+                  passwordError.classList.add('show');
+                  passwordInput.classList.add('error');
+                  return;
+                }
+                
+                // Disable form
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Resetting...';
+                
+                try {
+                  const response = await fetch(apiBase + '/api/reset-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      email: ${JSON.stringify(normalizedEmail)},
+                      token: ${JSON.stringify(token)},
+                      newPassword: password
+                    })
+                  });
+                  
+                  const data = await response.json();
+                  
+                  if (data.ok) {
+                    successDiv.classList.add('show');
+                    submitBtn.textContent = 'Success!';
+                    
+                    // Redirect to frontend after 2 seconds
+                    setTimeout(() => {
+                      window.location.href = '${frontendUrl}?passwordReset=success';
+                    }, 2000);
+                  } else {
+                    formError.textContent = data.message || 'Failed to reset password. Please try again.';
+                    formError.classList.add('show');
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Reset Password';
+                  }
+                } catch (err) {
+                  formError.textContent = 'Network error. Please check your connection and try again.';
+                  formError.classList.add('show');
+                  submitBtn.disabled = false;
+                  submitBtn.textContent = 'Reset Password';
+                }
+              });
             </script>
           </body>
         </html>
@@ -388,6 +571,8 @@ export default async function handler(req, res) {
   // POST requests are handled by reset-password.js API endpoint
   return res.status(405).json({ ok: false, reason: 'method_not_allowed' });
 }
+
+
 
 
 
