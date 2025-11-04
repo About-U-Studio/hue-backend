@@ -137,6 +137,31 @@ export default async function handler(req, res) {
       
       // Verify password if user has one
       const loginPassword = req.body?.password || '';
+      const providedAuthToken = req.body?.authToken || null; // For email verification auto-login
+      
+      // If authToken is provided (from email verification), verify it instead of password
+      if (providedAuthToken) {
+        // Verify the auth token matches
+        if (existingUser.auth_token === providedAuthToken && 
+            existingUser.auth_token_expires_at && 
+            new Date(existingUser.auth_token_expires_at) > new Date()) {
+          // Token is valid - allow login
+          // Auth token already exists, no need to generate new one
+          return res.status(200).json({ 
+            ok: true, 
+            userId: existingUser.id,
+            authToken: existingUser.auth_token
+          });
+        } else {
+          // Invalid or expired token
+          return res.status(401).json({ 
+            ok: false, 
+            reason: 'invalid_token',
+            message: 'Invalid or expired verification token. Please try logging in again.'
+          });
+        }
+      }
+      
       if (existingUser.password_hash) {
         // User has a password - require it for login
         if (!loginPassword) {
