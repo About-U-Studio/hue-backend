@@ -163,40 +163,30 @@ export default async function handler(req, res) {
         <html>
           <head>
             <title>Redirecting...</title>
-            <meta http-equiv="refresh" content="0;url=${redirectUrl}">
             <script>
-              // Store reset data in sessionStorage as backup
+              // Store reset data in sessionStorage FIRST (before redirect)
               try {
                 sessionStorage.setItem('huechat_reset_email', ${JSON.stringify(normalizedEmail)});
                 sessionStorage.setItem('huechat_reset_token', ${JSON.stringify(token)});
                 sessionStorage.setItem('huechat_reset_active', 'true');
-                console.log('🔐 Stored reset data in sessionStorage:', { email: ${JSON.stringify(normalizedEmail)}, tokenLength: ${token.length} });
+                console.log('🔐 Stored reset data in sessionStorage');
               } catch (e) {
                 console.error('Failed to store reset data:', e);
               }
               
-              // Try query param redirect first, then hash, then sessionStorage only
-              try {
-                window.location.href = ${JSON.stringify(redirectUrl)};
-              } catch (e) {
-                console.error('Query param redirect failed, trying hash:', e);
-                try {
-                  window.location.href = ${JSON.stringify(hashRedirectUrl)};
-                } catch (e2) {
-                  console.error('Hash redirect failed, using sessionStorage only:', e2);
-                  window.location.href = ${JSON.stringify(frontendUrl)};
-                }
-              }
+              // Immediate redirect - use replace to avoid back button issues
+              window.location.replace(${JSON.stringify(redirectUrl)});
             </script>
+            <meta http-equiv="refresh" content="0;url=${redirectUrl}">
           </head>
-          <body>
+          <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
             <p>Redirecting to password reset page...</p>
             <p>If you are not redirected, <a href="${redirectUrl}">click here</a>.</p>
             <script>
-              // Fallback: redirect after 1 second if JavaScript didn't work
+              // Fallback: redirect after 500ms if JavaScript didn't work
               setTimeout(function() {
-                window.location.href = ${JSON.stringify(redirectUrl)};
-              }, 1000);
+                window.location.replace(${JSON.stringify(redirectUrl)});
+              }, 500);
             </script>
           </body>
         </html>
@@ -370,6 +360,4 @@ export default async function handler(req, res) {
   // POST requests are handled by reset-password.js API endpoint
   return res.status(405).json({ ok: false, reason: 'method_not_allowed' });
 }
-
-
 
