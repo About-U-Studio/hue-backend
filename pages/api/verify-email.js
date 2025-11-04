@@ -12,14 +12,60 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Decode URL parameters properly
-    const token = req.query.token ? decodeURIComponent(req.query.token) : null;
-    const email = req.query.email ? decodeURIComponent(req.query.email) : null;
+    // Handle query parameters - Next.js can return arrays or strings
+    // Support both standard format (token, email) and fallback format (t, e) for email client compatibility
+    const tokenRaw = req.query.token || req.query.t;
+    const emailRaw = req.query.email || req.query.e;
+    
+    // Extract token and email (handle both string and array cases)
+    let token = null;
+    let email = null;
+    
+    if (tokenRaw) {
+      const rawValue = Array.isArray(tokenRaw) ? tokenRaw[0] : tokenRaw;
+      // If it's base64 encoded (fallback format), decode it
+      if (req.query.t) {
+        try {
+          token = Buffer.from(rawValue, 'base64').toString('utf-8');
+        } catch (e) {
+          console.error('Failed to decode base64 token:', e);
+          token = decodeURIComponent(rawValue);
+        }
+      } else {
+        token = decodeURIComponent(rawValue);
+      }
+    }
+    
+    if (emailRaw) {
+      const rawValue = Array.isArray(emailRaw) ? emailRaw[0] : emailRaw;
+      // If it's base64 encoded (fallback format), decode it
+      if (req.query.e) {
+        try {
+          email = Buffer.from(rawValue, 'base64').toString('utf-8');
+        } catch (e) {
+          console.error('Failed to decode base64 email:', e);
+          email = decodeURIComponent(rawValue);
+        }
+      } else {
+        email = decodeURIComponent(rawValue);
+      }
+    }
 
-    console.log('Verification request received:', { token: token ? 'present' : 'missing', email: email || 'missing' });
+    console.log('Verification request received:', { 
+      tokenRaw: tokenRaw ? (typeof tokenRaw === 'string' ? tokenRaw.substring(0, 20) + '...' : 'array') : 'missing',
+      emailRaw: emailRaw || 'missing',
+      token: token ? 'present (' + token.length + ' chars)' : 'missing',
+      email: email || 'missing',
+      queryKeys: Object.keys(req.query),
+      fullQuery: JSON.stringify(req.query)
+    });
 
     if (!token || !email) {
-      console.error('Missing token or email in verification request');
+      console.error('Missing token or email in verification request', {
+        tokenRaw: req.query.token,
+        emailRaw: req.query.email,
+        allQuery: req.query
+      });
       return res.status(400).send(`
         <html>
           <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
@@ -27,6 +73,7 @@ export default async function handler(req, res) {
             <p>Missing token or email. Please check your verification link.</p>
             <p>Token: ${token ? 'present' : 'missing'}</p>
             <p>Email: ${email || 'missing'}</p>
+            <p style="font-size: 12px; color: #666; margin-top: 20px;">If the token is missing, try clicking the full link in the email instead of the button.</p>
           </body>
         </html>
       `);
