@@ -21,6 +21,11 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
   
+  // Check request size before processing
+  if (checkRequestSize(req, res)) {
+    return; // Response already sent
+  }
+  
   // Rate limiting - 10 reviews per IP per hour
   if (rateLimitMiddleware(req, res, 'submitReview')) {
     return; // Response already sent
