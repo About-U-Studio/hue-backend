@@ -1,8 +1,10 @@
 import { applyCors } from '../../lib/cors';
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
 import { runAgent, runAgentWithHistory } from '../../lib/openaiAgent';
-import { isValidEmail, validateMessage, isValidUrl } from '../../lib/validation';
+import { isValidEmail, validateMessage, isValidUrl, sanitizeMessage } from '../../lib/validation';
 import { rateLimitMiddleware } from '../../lib/rateLimit';
+import { applySecurityHeaders } from '../../lib/securityHeaders.js';
+import { checkRequestSize } from '../../lib/requestLimits.js';
 
 const DAILY_LIMIT = 100;
 const MAX_MESSAGE_LENGTH = 5000;
@@ -19,8 +21,16 @@ function startEndUtcForTodayET() {
 }
 
 export default async function handler(req, res) {
+  // Apply security headers
+  applySecurityHeaders(res);
+  
   if (applyCors(req, res)) return;
   if (req.method !== 'POST') return res.status(405).json({ reply: 'method_not_allowed' });
+  
+  // Check request size before processing
+  if (checkRequestSize(req, res)) {
+    return; // Response already sent
+  }
   
   // Rate limiting - 200 messages per IP per hour (in addition to daily user limit)
   if (rateLimitMiddleware(req, res, 'chat')) {
@@ -92,7 +102,10 @@ export default async function handler(req, res) {
 
     // Get the latest user message
     const userMessage = messages.length > 0 ? messages[messages.length - 1] : null;
-    const userText = userMessage?.content || '';
+    const userTextRaw = userMessage?.content || '';
+    
+    // Sanitize user input to prevent XSS attacks
+    const userText = userTextRaw ? sanitizeMessage(userTextRaw) : '';
     
     // Validate message content if provided
     if (userText) {
@@ -170,4 +183,3 @@ export default async function handler(req, res) {
     return res.status(200).json({ reply: 'Sorry, something went wrong.' });
   }
 }
-
