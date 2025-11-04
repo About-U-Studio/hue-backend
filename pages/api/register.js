@@ -265,13 +265,15 @@ export default async function handler(req, res) {
       email: normalizedEmail // Use normalized email
     });
 
-    // Send verification email (use sanitized values for display)
+    // Send verification email (use normalized email for consistency)
+    // Emails are case-insensitive, but we normalize to lowercase for consistency
     try {
-      await sendVerificationEmail(sanitizedEmail, sanitizedFirstName, verificationToken);
-      console.log('Verification email sent successfully to:', email);
+      await sendVerificationEmail(normalizedEmail, sanitizedFirstName, verificationToken);
+      console.log('Verification email sent successfully to:', normalizedEmail);
     } catch (e) {
       console.error('Failed to send verification email:', e);
       console.error('Error details:', JSON.stringify(e, null, 2));
+      console.error('Email attempted:', normalizedEmail);
       // Still return success - verification email can be resent later
       // But log the error for debugging
     }
