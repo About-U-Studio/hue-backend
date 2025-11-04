@@ -54,19 +54,10 @@ export default async function handler(req, res) {
       }
       
       if (!token || !email) {
-        return res.status(400).send(`
-          <html>
-            <head>
-              <title>Invalid Reset Link - Hue</title>
-              <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            </head>
-            <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
-              <h2>Invalid Reset Link</h2>
-              <p>This password reset link is invalid or missing required information.</p>
-              <p><a href="/">Go to Hue Chat</a></p>
-            </body>
-          </html>
-        `);
+        // Redirect to frontend with error parameter
+        const frontendUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || 'https://aboutu-studio.framer.website';
+        const redirectUrl = `${frontendUrl}?resetPassword=invalid`;
+        return res.redirect(302, redirectUrl);
       }
       
       // Verify token is valid (don't reveal if email exists)
@@ -78,41 +69,34 @@ export default async function handler(req, res) {
         .single();
       
       if (!user || !user.password_reset_token || user.password_reset_token.trim() !== token.trim()) {
-        return res.status(400).send(`
-          <html>
-            <head>
-              <title>Invalid Reset Link - Hue</title>
-              <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            </head>
-            <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
-              <h2>Invalid Reset Link</h2>
-              <p>This password reset link is invalid or has expired.</p>
-              <p><a href="/">Go to Hue Chat</a></p>
-            </body>
-          </html>
-        `);
+        // Redirect to frontend with error parameter
+        const frontendUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || 'https://aboutu-studio.framer.website';
+        const redirectUrl = `${frontendUrl}?resetPassword=invalid`;
+        return res.redirect(302, redirectUrl);
       }
       
       // Check if token expired
       if (user.password_reset_token_expires_at) {
         const expiresAt = new Date(user.password_reset_token_expires_at);
         if (new Date() > expiresAt) {
-          return res.status(400).send(`
-            <html>
-              <head>
-                <title>Expired Reset Link - Hue</title>
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-              </head>
-              <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
-                <h2>Reset Link Expired</h2>
-                <p>This password reset link has expired. Please request a new one.</p>
-                <p><a href="/">Go to Hue Chat</a></p>
-              </body>
-            </html>
-          `);
+          // Redirect to frontend with error parameter
+          const frontendUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || 'https://aboutu-studio.framer.website';
+          const redirectUrl = `${frontendUrl}?resetPassword=expired`;
+          return res.redirect(302, redirectUrl);
         }
       }
       
+      // Token is valid - redirect to frontend with reset parameters
+      const frontendUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || 'https://aboutu-studio.framer.website';
+      const encodedEmail = encodeURIComponent(normalizedEmail);
+      const encodedToken = encodeURIComponent(token);
+      const redirectUrl = `${frontendUrl}?resetPassword=true&email=${encodedEmail}&token=${encodedToken}`;
+      
+      // Redirect to frontend
+      return res.redirect(302, redirectUrl);
+      
+      // OLD CODE - Keep for reference but commented out
+      /*
       // Show reset password form
       return res.status(200).send(`
         <!DOCTYPE html>
@@ -262,6 +246,7 @@ export default async function handler(req, res) {
           </body>
         </html>
       `);
+      */
     } catch (e) {
       console.error('Reset password page error:', e);
       return res.status(500).send(`
@@ -278,3 +263,4 @@ export default async function handler(req, res) {
   // POST requests are handled by reset-password.js API endpoint
   return res.status(405).json({ ok: false, reason: 'method_not_allowed' });
 }
+
