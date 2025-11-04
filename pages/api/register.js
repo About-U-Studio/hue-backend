@@ -6,10 +6,10 @@ import { isValidEmail, isValidName, validateRequiredFields, sanitizeString } fro
 import { rateLimitMiddleware } from '../../lib/rateLimit';
 import { generateAuthToken, getAuthTokenExpiration } from '../../lib/auth';
 import { generateVerificationToken, getTokenExpiration } from '../../lib/tokens';
-import { applySecurityHeaders } from '../../lib/securityHeaders.js';
-import { checkRequestSize } from '../../lib/requestLimits.js';
+import { applySecurityHeaders } from '../../lib/securityHeaders';
+import { checkRequestSize } from '../../lib/requestLimits';
 import { verifyCaptcha } from '../../lib/captcha';
-import { validatePassword, hashPassword, verifyPassword } from '../../lib/password.js';
+import { validatePassword, hashPassword, verifyPassword } from '../../lib/password';
 
 export default async function handler(req, res) {
   // Apply security headers
