@@ -12,48 +12,66 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Handle query parameters - Next.js can return arrays or strings
-    // Support both standard format (token, email) and fallback format (t, e) for email client compatibility
-    const tokenRaw = req.query.token || req.query.t;
-    const emailRaw = req.query.email || req.query.e;
-    
-    // Extract token and email (handle both string and array cases)
+    // Support new format (single 'data' parameter with base64 encoded JSON)
+    // and fallback to old format (separate 'token' and 'email' parameters)
     let token = null;
     let email = null;
     
-    if (tokenRaw) {
-      const rawValue = Array.isArray(tokenRaw) ? tokenRaw[0] : tokenRaw;
-      // If it's base64 encoded (fallback format), decode it
-      if (req.query.t) {
-        try {
-          token = Buffer.from(rawValue, 'base64').toString('utf-8');
-        } catch (e) {
-          console.error('Failed to decode base64 token:', e);
-          token = decodeURIComponent(rawValue);
-        }
-      } else {
-        token = decodeURIComponent(rawValue);
+    // Try new format first (single 'data' parameter)
+    if (req.query.data) {
+      try {
+        const dataRaw = Array.isArray(req.query.data) ? req.query.data[0] : req.query.data;
+        const decodedData = Buffer.from(dataRaw, 'base64').toString('utf-8');
+        const data = JSON.parse(decodedData);
+        token = data.token;
+        email = data.email;
+        console.log('Using new format (data parameter)');
+      } catch (e) {
+        console.error('Failed to decode data parameter:', e);
       }
     }
     
-    if (emailRaw) {
-      const rawValue = Array.isArray(emailRaw) ? emailRaw[0] : emailRaw;
-      // If it's base64 encoded (fallback format), decode it
-      if (req.query.e) {
-        try {
-          email = Buffer.from(rawValue, 'base64').toString('utf-8');
-        } catch (e) {
-          console.error('Failed to decode base64 email:', e);
+    // Fallback to old format (separate token and email parameters)
+    if (!token || !email) {
+      const tokenRaw = req.query.token || req.query.t;
+      const emailRaw = req.query.email || req.query.e;
+      
+      if (tokenRaw) {
+        const rawValue = Array.isArray(tokenRaw) ? tokenRaw[0] : tokenRaw;
+        if (req.query.t) {
+          // Base64 encoded token
+          try {
+            token = Buffer.from(rawValue, 'base64').toString('utf-8');
+          } catch (e) {
+            token = decodeURIComponent(rawValue);
+          }
+        } else {
+          token = decodeURIComponent(rawValue);
+        }
+      }
+      
+      if (emailRaw) {
+        const rawValue = Array.isArray(emailRaw) ? emailRaw[0] : emailRaw;
+        if (req.query.e) {
+          // Base64 encoded email
+          try {
+            email = Buffer.from(rawValue, 'base64').toString('utf-8');
+          } catch (e) {
+            email = decodeURIComponent(rawValue);
+          }
+        } else {
           email = decodeURIComponent(rawValue);
         }
-      } else {
-        email = decodeURIComponent(rawValue);
+      }
+      if (token || email) {
+        console.log('Using old format (separate parameters)');
       }
     }
 
     console.log('Verification request received:', { 
-      tokenRaw: tokenRaw ? (typeof tokenRaw === 'string' ? tokenRaw.substring(0, 20) + '...' : 'array') : 'missing',
-      emailRaw: emailRaw || 'missing',
+      hasDataParam: !!req.query.data,
+      hasTokenParam: !!req.query.token,
+      hasEmailParam: !!req.query.email,
       token: token ? 'present (' + token.length + ' chars)' : 'missing',
       email: email || 'missing',
       queryKeys: Object.keys(req.query),
