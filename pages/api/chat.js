@@ -3,8 +3,8 @@ import { supabaseAdmin } from '../../lib/supabaseAdmin';
 import { runAgent, runAgentWithHistory } from '../../lib/openaiAgent';
 import { isValidEmail, validateMessage, isValidUrl, sanitizeMessage } from '../../lib/validation';
 import { rateLimitMiddleware } from '../../lib/rateLimit';
-import { applySecurityHeaders } from '../../lib/securityHeaders.js';
-import { checkRequestSize } from '../../lib/requestLimits.js';
+import { applySecurityHeaders } from '../../lib/securityHeaders';
+import { checkRequestSize } from '../../lib/requestLimits';
 
 const DAILY_LIMIT = 100;
 const MAX_MESSAGE_LENGTH = 5000;
@@ -183,3 +183,4 @@ export default async function handler(req, res) {
     return res.status(200).json({ reply: 'Sorry, something went wrong.' });
   }
 }
+
