@@ -57,7 +57,22 @@ export default async function handler(req, res) {
         // Redirect to frontend with error parameter
         const frontendUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || 'https://aboutu-studio.framer.website';
         const redirectUrl = `${frontendUrl}?resetPassword=invalid`;
-        return res.redirect(302, redirectUrl);
+        console.log('🔐 Missing reset parameters, redirecting:', redirectUrl);
+        
+        return res.status(200).send(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>Redirecting...</title>
+              <script>
+                window.location.href = ${JSON.stringify(redirectUrl)};
+              </script>
+            </head>
+            <body>
+              <p>Redirecting...</p>
+            </body>
+          </html>
+        `);
       }
       
       // Verify token is valid (don't reveal if email exists)
@@ -72,7 +87,28 @@ export default async function handler(req, res) {
         // Redirect to frontend with error parameter
         const frontendUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || 'https://aboutu-studio.framer.website';
         const redirectUrl = `${frontendUrl}?resetPassword=invalid`;
-        return res.redirect(302, redirectUrl);
+        console.log('🔐 Invalid reset token, redirecting:', redirectUrl);
+        
+        return res.status(200).send(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>Redirecting...</title>
+              <script>
+                // Store error in sessionStorage as backup
+                try {
+                  sessionStorage.setItem('huechat_reset_active', 'invalid');
+                } catch (e) {
+                  console.error('Failed to store reset error:', e);
+                }
+                window.location.href = ${JSON.stringify(redirectUrl)};
+              </script>
+            </head>
+            <body>
+              <p>Redirecting...</p>
+            </body>
+          </html>
+        `);
       }
       
       // Check if token expired
@@ -82,7 +118,28 @@ export default async function handler(req, res) {
           // Redirect to frontend with error parameter
           const frontendUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || 'https://aboutu-studio.framer.website';
           const redirectUrl = `${frontendUrl}?resetPassword=expired`;
-          return res.redirect(302, redirectUrl);
+          console.log('🔐 Expired reset token, redirecting:', redirectUrl);
+          
+          return res.status(200).send(`
+            <!DOCTYPE html>
+            <html>
+              <head>
+                <title>Redirecting...</title>
+                <script>
+                  // Store error in sessionStorage as backup
+                  try {
+                    sessionStorage.setItem('huechat_reset_active', 'expired');
+                  } catch (e) {
+                    console.error('Failed to store reset error:', e);
+                  }
+                  window.location.href = ${JSON.stringify(redirectUrl)};
+                </script>
+              </head>
+              <body>
+                <p>Redirecting...</p>
+              </body>
+            </html>
+          `);
         }
       }
       
@@ -90,10 +147,60 @@ export default async function handler(req, res) {
       const frontendUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || 'https://aboutu-studio.framer.website';
       const encodedEmail = encodeURIComponent(normalizedEmail);
       const encodedToken = encodeURIComponent(token);
-      const redirectUrl = `${frontendUrl}?resetPassword=true&email=${encodedEmail}&token=${encodedToken}`;
       
-      // Redirect to frontend
-      return res.redirect(302, redirectUrl);
+      // Use hash-based URL as fallback (more reliable than query params)
+      const hashData = btoa(JSON.stringify({ email: normalizedEmail, token: token }));
+      const redirectUrl = `${frontendUrl}?resetPassword=true&email=${encodedEmail}&token=${encodedToken}`;
+      const hashRedirectUrl = `${frontendUrl}#resetPassword=${hashData}`;
+      
+      console.log('🔐 Redirecting to frontend for password reset:', redirectUrl);
+      console.log('🔐 Hash fallback URL:', hashRedirectUrl);
+      
+      // Use HTML redirect with sessionStorage fallback to preserve reset data
+      // Store in sessionStorage as backup in case query params get stripped
+      return res.status(200).send(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Redirecting...</title>
+            <meta http-equiv="refresh" content="0;url=${redirectUrl}">
+            <script>
+              // Store reset data in sessionStorage as backup
+              try {
+                sessionStorage.setItem('huechat_reset_email', ${JSON.stringify(normalizedEmail)});
+                sessionStorage.setItem('huechat_reset_token', ${JSON.stringify(token)});
+                sessionStorage.setItem('huechat_reset_active', 'true');
+                console.log('🔐 Stored reset data in sessionStorage:', { email: ${JSON.stringify(normalizedEmail)}, tokenLength: ${token.length} });
+              } catch (e) {
+                console.error('Failed to store reset data:', e);
+              }
+              
+              // Try query param redirect first, then hash, then sessionStorage only
+              try {
+                window.location.href = ${JSON.stringify(redirectUrl)};
+              } catch (e) {
+                console.error('Query param redirect failed, trying hash:', e);
+                try {
+                  window.location.href = ${JSON.stringify(hashRedirectUrl)};
+                } catch (e2) {
+                  console.error('Hash redirect failed, using sessionStorage only:', e2);
+                  window.location.href = ${JSON.stringify(frontendUrl)};
+                }
+              }
+            </script>
+          </head>
+          <body>
+            <p>Redirecting to password reset page...</p>
+            <p>If you are not redirected, <a href="${redirectUrl}">click here</a>.</p>
+            <script>
+              // Fallback: redirect after 1 second if JavaScript didn't work
+              setTimeout(function() {
+                window.location.href = ${JSON.stringify(redirectUrl)};
+              }, 1000);
+            </script>
+          </body>
+        </html>
+      `);
       
       // OLD CODE - Keep for reference but commented out
       /*
@@ -263,4 +370,6 @@ export default async function handler(req, res) {
   // POST requests are handled by reset-password.js API endpoint
   return res.status(405).json({ ok: false, reason: 'method_not_allowed' });
 }
+
+
 
