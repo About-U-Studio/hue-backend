@@ -59,6 +59,7 @@ export default async function handler(req, res) {
         const redirectUrl = `${frontendUrl}?resetPassword=invalid`;
         console.log('🔐 Missing reset parameters, redirecting:', redirectUrl);
         
+        res.setHeader('Content-Type', 'text/html');
         return res.status(200).send(`
           <!DOCTYPE html>
           <html>
@@ -89,6 +90,7 @@ export default async function handler(req, res) {
         const redirectUrl = `${frontendUrl}?resetPassword=invalid`;
         console.log('🔐 Invalid reset token, redirecting:', redirectUrl);
         
+        res.setHeader('Content-Type', 'text/html');
         return res.status(200).send(`
           <!DOCTYPE html>
           <html>
@@ -120,6 +122,7 @@ export default async function handler(req, res) {
           const redirectUrl = `${frontendUrl}?resetPassword=expired`;
           console.log('🔐 Expired reset token, redirecting:', redirectUrl);
           
+          res.setHeader('Content-Type', 'text/html');
           return res.status(200).send(`
             <!DOCTYPE html>
             <html>
@@ -158,6 +161,7 @@ export default async function handler(req, res) {
       
       // Use HTML redirect with sessionStorage fallback to preserve reset data
       // Store in sessionStorage as backup in case query params get stripped
+      res.setHeader('Content-Type', 'text/html');
       return res.status(200).send(`
         <!DOCTYPE html>
         <html>
@@ -346,6 +350,7 @@ export default async function handler(req, res) {
       */
     } catch (e) {
       console.error('Reset password page error:', e);
+      res.setHeader('Content-Type', 'text/html');
       return res.status(500).send(`
         <html>
           <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
@@ -360,4 +365,6 @@ export default async function handler(req, res) {
   // POST requests are handled by reset-password.js API endpoint
   return res.status(405).json({ ok: false, reason: 'method_not_allowed' });
 }
+
+
 
