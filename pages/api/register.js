@@ -172,9 +172,12 @@ export default async function handler(req, res) {
     // Send verification email (use original email for display)
     try {
       await sendVerificationEmail(email, firstName, verificationToken);
+      console.log('Verification email sent successfully to:', email);
     } catch (e) {
       console.error('Failed to send verification email:', e);
+      console.error('Error details:', JSON.stringify(e, null, 2));
       // Still return success - verification email can be resent later
+      // But log the error for debugging
     }
 
     // Don't send welcome email until verified
