@@ -50,6 +50,12 @@ export default async function handler(req, res) {
     const messages = req.body?.messages || [];
     const imageUrl = req.body?.imageUrl || null;
     
+    // Log image URL for debugging
+    if (imageUrl) {
+      console.log('Image received:', imageUrl.substring(0, 100), '... (length:', imageUrl.length, ')');
+      console.log('Is base64:', imageUrl.startsWith('data:image/'));
+    }
+    
     // Validate imageUrl if provided
     if (imageUrl && typeof imageUrl === 'string' && !isValidUrl(imageUrl) && !imageUrl.startsWith('data:image/')) {
       return res.status(400).json({ reply: 'Invalid image URL format.' });
@@ -181,3 +187,4 @@ export default async function handler(req, res) {
     return res.status(200).json({ reply: 'Sorry, something went wrong.' });
   }
 }
+
