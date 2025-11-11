@@ -134,7 +134,7 @@ export default async function handler(req, res) {
         })
         .eq('id', user.id);
       
-      const frontendUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || 'https://aboutu-studio.framer.website';
+      const frontendUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || 'https://aboutu.studio';
       const encodedEmail = encodeURIComponent(normalizedEmail);
       const encodedToken = encodeURIComponent(authToken);
       const redirectUrl = `${frontendUrl}?verified=true&email=${encodedEmail}&token=${encodedToken}`;
@@ -230,7 +230,7 @@ export default async function handler(req, res) {
     }
 
     // Get the frontend URL from environment variable or use default
-    const frontendUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || 'https://aboutu-studio.framer.website';
+    const frontendUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || 'https://aboutu.studio';
     
     // Encode email and auth token for URL parameters
     const encodedEmail = encodeURIComponent(normalizedEmail);
@@ -270,4 +270,3 @@ export default async function handler(req, res) {
     `);
   }
 }
-
