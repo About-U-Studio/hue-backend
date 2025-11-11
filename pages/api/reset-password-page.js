@@ -55,7 +55,7 @@ export default async function handler(req, res) {
       
       if (!token || !email) {
         // Redirect to frontend with error parameter
-        const frontendUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || 'https://aboutu-studio.framer.website';
+        const frontendUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || 'https://aboutu.studio';
         const redirectUrl = `${frontendUrl}?resetPassword=invalid`;
         console.log('🔐 Missing reset parameters, redirecting:', redirectUrl);
         
@@ -86,7 +86,7 @@ export default async function handler(req, res) {
       
       if (!user || !user.password_reset_token || user.password_reset_token.trim() !== token.trim()) {
         // Redirect to frontend with error parameter
-        const frontendUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || 'https://aboutu-studio.framer.website';
+        const frontendUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || 'https://aboutu.studio';
         const redirectUrl = `${frontendUrl}?resetPassword=invalid`;
         console.log('🔐 Invalid reset token, redirecting:', redirectUrl);
         
@@ -112,7 +112,7 @@ export default async function handler(req, res) {
         const expiresAt = new Date(user.password_reset_token_expires_at);
         if (new Date() > expiresAt) {
           // Redirect to frontend with error parameter
-          const frontendUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || 'https://aboutu-studio.framer.website';
+          const frontendUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || 'https://aboutu.studio';
           const redirectUrl = `${frontendUrl}?resetPassword=expired`;
           console.log('🔐 Expired reset token, redirecting:', redirectUrl);
           
@@ -135,7 +135,7 @@ export default async function handler(req, res) {
       }
       
       // Token is valid - show reset password form directly (no redirect needed)
-      const frontendUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || 'https://aboutu-studio.framer.website';
+      const frontendUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || 'https://aboutu.studio';
       
       // Determine API base URL for client-side fetch
       let apiBase = process.env.NEXT_PUBLIC_BASE_URL;
@@ -406,7 +406,6 @@ export default async function handler(req, res) {
   // POST requests are handled by reset-password.js API endpoint
   return res.status(405).json({ ok: false, reason: 'method_not_allowed' });
 }
-
 
 
 
